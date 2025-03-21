@@ -1,3 +1,4 @@
+// Modified LoginPage component with wood industry theme
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import authUtils from '../utils/authUtils';
@@ -64,33 +65,37 @@ const LoginPage = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center" 
+             style={{ 
+                 background: 'linear-gradient(135deg, #f5f3e8 0%, #e8e2cf 100%)',
+                 backgroundImage: 'url("/wood-texture-bg.jpg")',
+                 backgroundSize: 'cover',
+                 backgroundBlendMode: 'overlay'
+             }}>
             <div className="w-full max-w-md mx-4">
-
-
-                <Card className="shadow-lg border border-gray-100">
+                <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
                     <CardContent className="p-8">
-                        <div className="text-center mb-8">
-                            {/* Logo - Thay thế đường dẫn bằng logo của bạn */}
+                        <div className="text-center mb-6">
+                            {/* Company Logo */}
                             <img
-                                src="https://toolapp.name.vn/logo1.png"
+                                src="/logo1.png" 
                                 alt="Logo"
-                                className="h-20 mx-auto mb-4"
+                                className="h-24 mx-auto mb-2"
                             />
-                            {/* Nếu logo là SVG có thể thêm trực tiếp ở đây */}
-                            {/* <svg className="h-12 w-auto mx-auto mb-4">...</svg> */}
+                            <h1 className="text-2xl font-semibold text-[#4a3c18]">
+                                Công ty Sản xuất Gỗ</h1>
                         </div>
                         <div className="text-center mb-8">
-                            <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+                            <h1 className="text-2xl font-semibold text-[#4a3c18] mb-2">
                                 Đăng nhập
                             </h1>
-                            <p className="text-gray-600">
+                            <p className="text-[#6a5d3d]">
                                 Vui lòng đăng nhập để tiếp tục
                             </p>
                         </div>
 
                         {location.state?.from && (
-                            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 text-blue-700 rounded-lg">
+                            <div className="mb-6 p-4 bg-[#f0ead6] border border-[#d9c89e] text-[#6a5d3d] rounded-lg">
                                 Bạn cần đăng nhập để truy cập trang {location.state.from}
                             </div>
                         )}
@@ -99,13 +104,13 @@ const LoginPage = () => {
                             <div className="space-y-2">
                                 <label
                                     htmlFor="username"
-                                    className="block text-sm font-medium text-gray-700"
+                                    className="block text-sm font-medium text-[#4a3c18]"
                                 >
                                     Tên đăng nhập
                                 </label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <User className="h-5 w-5 text-gray-400" />
+                                        <User className="h-5 w-5 text-[#d9c89e]" />
                                     </div>
                                     <input
                                         id="username"
@@ -113,7 +118,7 @@ const LoginPage = () => {
                                         type="text"
                                         required
                                         placeholder="Nhập tên đăng nhập"
-                                        className="w-full h-11 pl-10 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors outline-none"
+                                        className="w-full h-11 pl-10 rounded-lg border border-[#d9c89e] focus:border-[#ffa726] focus:ring-2 focus:ring-[#ffa726]/20 transition-colors outline-none bg-white/80"
                                         value={formData.username}
                                         onChange={handleChange}
                                     />
@@ -123,13 +128,13 @@ const LoginPage = () => {
                             <div className="space-y-2">
                                 <label
                                     htmlFor="password"
-                                    className="block text-sm font-medium text-gray-700"
+                                    className="block text-sm font-medium text-[#4a3c18]"
                                 >
                                     Mật khẩu
                                 </label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Lock className="h-5 w-5 text-gray-400" />
+                                        <Lock className="h-5 w-5 text-[#d9c89e]" />
                                     </div>
                                     <input
                                         id="password"
@@ -137,13 +142,13 @@ const LoginPage = () => {
                                         type={showPassword ? 'text' : 'password'}
                                         required
                                         placeholder="Nhập mật khẩu"
-                                        className="w-full h-11 pl-10 pr-12 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors outline-none"
+                                        className="w-full h-11 pl-10 pr-12 rounded-lg border border-[#d9c89e] focus:border-[#ffa726] focus:ring-2 focus:ring-[#ffa726]/20 transition-colors outline-none bg-white/80"
                                         value={formData.password}
                                         onChange={handleChange}
                                     />
                                     <button
                                         type="button"
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-[#6a5d3d] hover:text-[#4a3c18] transition-colors"
                                         onClick={() => setShowPassword(!showPassword)}
                                     >
                                         {showPassword ? (
@@ -158,7 +163,8 @@ const LoginPage = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center disabled:opacity-70"
+                                className="w-full h-11 bg-[#ffa726] hover:bg-[#f57c00] text-white rounded-lg font-medium transition-colors flex items-center justify-center disabled:opacity-70"
+                                style={{boxShadow: '0 2px 8px rgba(255, 167, 38, 0.4)'}}
                             >
                                 {loading ? (
                                     <div className="flex items-center">
@@ -175,6 +181,9 @@ const LoginPage = () => {
                         </form>
                     </CardContent>
                 </Card>
+                <div className="text-center mt-4 text-[#6a5d3d] text-sm">
+                    © 2025 Công ty Sản xuất Gỗ. Tất cả quyền được bảo lưu.
+                </div>
             </div>
         </div>
     );

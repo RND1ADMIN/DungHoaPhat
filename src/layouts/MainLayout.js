@@ -102,8 +102,9 @@ const MainLayout = ({ children }) => {
         <div className="flex flex-col h-full bg-white">
             {/* Logo & Brand */}
             <div className="flex items-center justify-between px-6 py-4 border-b">
+                <img src="/logo1.png" alt="Logo" className="h-8" />
                 <h1 className="text-xl font-semibold text-gray-800">
-                    Quản lý nhà hàng
+                   DUNG HOA PHAT
                 </h1>
                 <button
                     className="text-gray-500 hover:text-gray-700"
