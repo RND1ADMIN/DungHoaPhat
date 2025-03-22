@@ -9,7 +9,10 @@ import authUtils from './utils/authUtils';
 import Profile from './pages/Profile';
 import Test from './pages/test';
 import Users from './pages/UserManagement';
-
+import NVLManagement from './pages/Nvl';
+import TPManagement from './pages/Tp';
+import ReportManagement from './pages/BaoCao';
+import ReportMobile from './pages/BaoCaoMobie';
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
@@ -39,6 +42,10 @@ function App() {
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/test" element={<Test />} />
+                  <Route path="/nvl" element={<NVLManagement />} />
+                  <Route path="/tp" element={<TPManagement />} />
+                  <Route path="/report" element={<ReportManagement />} />
+                  <Route path="/reportMobile" element={<ReportMobile />} />
 
 
 

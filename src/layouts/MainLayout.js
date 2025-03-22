@@ -83,7 +83,15 @@ const MainLayout = ({ children }) => {
         { text: 'Tổng quan', icon: LayoutDashboard, path: '/dashboard' },
      
         { text: 'Quản lý người dùng', icon: User, path: '/users' },
-        { text: 'Quản lý món ăn', icon: UtensilsCrossed, path: '/test' },
+        { text: 'Nguyên Vật Liệu', icon: UtensilsCrossed, path: '/nvl' },
+        { text: 'Thành Phẩm', icon: Table, path: '/tp' },
+        {
+            text: 'Báo Cáo sản lượng',
+            icon: UtensilsCrossed,
+            path: isMobile ? '/reportMobile' : '/report',
+            isExternal: true,
+            requiresUserParam: true
+        },
         { text: 'Đăng xuất', icon: LogOut, path: '/', isLogout: true }
     ];
 
