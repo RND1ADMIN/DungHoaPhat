@@ -1,174 +1,162 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash, Search, ChevronDown, ChevronUp, Filter, Check, X, Calendar, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Search, Filter, ArrowLeft, Download, Upload, Calendar, ChevronDown, ChevronUp, Edit, Trash, Check, X } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import authUtils from '../utils/authUtils';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
-import Select from 'react-select';
-const ReportMobile = () => {
-    // State management (giữ nguyên)
+
+// Date formatting utilities
+const formatDateToString = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${year}-${month}-${day}`;
+};
+
+const formatDateForDisplay = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN');
+};
+
+const MobileReportManagement = () => {
+    // State Management - core data
     const [reports, setReports] = useState([]);
     const [staffList, setStaffList] = useState([]);
     const [congDoanList, setCongDoanList] = useState([
-        "Cắt thô",
-        "Bào, lựa phôi",
-        "Finger ghép dọc 1",
-        "Finger ghép dọc 2",
-        "Bào tinh ghép ngang",
-        "Trám trít",
-        "Chà nhám - kiểm hàng",
-        "Nhập kho thành phẩm"
+        "Cắt thô", "Bào, lựa phôi", "Finger ghép dọc 1", "Finger ghép dọc 2",
+        "Bào tinh ghép ngang", "Trám trít", "Chà nhám - kiểm hàng", "Nhập kho thành phẩm"
     ]);
+
+    // State - UI controls
     const [search, setSearch] = useState('');
+    const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         congDoan: '',
         trangThai: '',
         startDate: null,
         endDate: null
     });
-    const [showFilters, setShowFilters] = useState(false);
-    const [groupedReports, setGroupedReports] = useState({});
     const [expandedDates, setExpandedDates] = useState({});
+    const [isDetailView, setIsDetailView] = useState(false);
+    const [selectedReport, setSelectedReport] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [showStaffDropdown, setShowStaffDropdown] = useState(false);
+    const [selectedStaff, setSelectedStaff] = useState([]);
+    // State for add/edit form
+    const [showAddForm, setShowAddForm] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Modal States (giữ nguyên)
-    const [showReportModal, setShowReportModal] = useState(false);
-    const [showApprovalModal, setShowApprovalModal] = useState(false);
-    const [reportToApprove, setReportToApprove] = useState(null);
     const [currentReport, setCurrentReport] = useState({
         ID: '',
         'NGÀY': new Date(),
         'CÔNG ĐOẠN': '',
         'KHỐI LƯỢNG': '',
-        'NHÂN SỰ THAM GIA': [],
+        'NHÂN SỰ THAM GIA': '',
         'GHI CHÚ': '',
         'NGƯỜI NHẬP': '',
         'TRẠNG THÁI': 'Chờ duyệt',
         'NGƯỜI DUYỆT': ''
     });
-
-    // Các useEffect và hàm xử lý (giữ nguyên)
     useEffect(() => {
-        fetchReports();
-        fetchStaffList();
-        fetchCongDoanList();
-    }, []);
-
-    useEffect(() => {
-        groupReportsByDate();
-    }, [reports, search, filters]);
-    useEffect(() => {
-        // Register the buttons in the header
-        if (window.registerPageActions) {
-            window.registerPageActions([
-                {
-                    icon: <Filter className="w-5 h-5" />,
-                    onClick: () => setShowFilters(!showFilters),
-                    title: "Lọc báo cáo",
-                    className: "p-2 text-gray-600 border border-gray-300 rounded-lg"
-                },
-                {
-                    icon: <Plus className="w-5 h-5" />,
-                    onClick: () => handleOpenReportModal(),
-                    title: "Thêm báo cáo mới",
-                    className: "p-2 bg-blue-500 text-white rounded-lg"
-                }
-            ]);
+        if (currentReport['NHÂN SỰ THAM GIA']) {
+            const staffArray = currentReport['NHÂN SỰ THAM GIA'].split(',').map(item => item.trim());
+            setSelectedStaff(staffArray);
+        } else {
+            setSelectedStaff([]);
         }
-        
-        // Clean up on component unmount
-        return () => {
-            if (window.clearPageActions) {
-                window.clearPageActions();
+    }, [currentReport['NHÂN SỰ THAM GIA']]);
+    // Fetch data
+  
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            try {
+                const reportData = await authUtils.apiRequest('BC', 'Find', {});
+                setReports(reportData);
+
+                const staffData = await authUtils.apiRequest('DSNV', 'Find', {});
+                setStaffList(staffData.map(staff => ({
+                    value: staff['Họ và Tên'],
+                    label: staff['Họ và Tên']
+                })));
+
+                // Fetch congDoanList if API exists
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                toast.error('Lỗi khi tải dữ liệu');
+            } finally {
+                setIsLoading(false);
             }
         };
-    }, [showFilters]);
-    // Các hàm xử lý (giữ nguyên)
-    const fetchReports = async () => {
-        // Giữ nguyên code
-        try {
-            const response = await authUtils.apiRequest('BC', 'Find', {});
-            setReports(response);
-        } catch (error) {
-            console.error('Error fetching reports:', error);
-            toast.error('Lỗi khi tải danh sách báo cáo');
-        }
-    };
 
-    const fetchStaffList = async () => {
-        // Giữ nguyên code
-        try {
-            const response = await authUtils.apiRequest('DSNV', 'Find', {});
-            const staffOptions = response.map(staff => ({
-                value: staff['Họ và Tên'],
-                label: staff['Họ và Tên']
-            }));
-            setStaffList(staffOptions);
-        } catch (error) {
-            console.error('Error fetching staff list:', error);
-            toast.error('Lỗi khi tải danh sách nhân viên');
-        }
-    };
+        fetchData();
+    }, []);
 
-    const fetchCongDoanList = async () => {
-        // Giữ nguyên code
-        try {
-            // API implementation would go here if available
-        } catch (error) {
-            console.error('Error fetching cong doan list:', error);
-        }
-    };
-
-    const groupReportsByDate = () => {
-        // Giữ nguyên code
-        const filteredReports = reports.filter(report => {
-            const matchesSearch = !search ||
+    // Filter reports
+    const filteredReports = useMemo(() => {
+        return reports.filter(report => {
+            // Search filter
+            const matchesSearch =
+                !search ||
                 report['CÔNG ĐOẠN']?.toLowerCase().includes(search.toLowerCase()) ||
                 report.ID?.toLowerCase().includes(search.toLowerCase());
 
+            // Công đoạn filter
             const matchesCongDoan = !filters.congDoan || report['CÔNG ĐOẠN'] === filters.congDoan;
+
+            // Trạng thái filter
             const matchesTrangThai = !filters.trangThai || report['TRẠNG THÁI'] === filters.trangThai;
 
-            // Date filtering
+            // Date range filter
             let dateMatches = true;
             if (filters.startDate || filters.endDate) {
                 const reportDate = new Date(report['NGÀY']);
+                reportDate.setHours(0, 0, 0, 0);
 
                 if (filters.startDate && filters.endDate) {
-                    dateMatches = reportDate >= filters.startDate && reportDate <= filters.endDate;
+                    const start = new Date(filters.startDate);
+                    start.setHours(0, 0, 0, 0);
+                    const end = new Date(filters.endDate);
+                    end.setHours(23, 59, 59, 999);
+                    dateMatches = reportDate >= start && reportDate <= end;
                 } else if (filters.startDate) {
-                    dateMatches = reportDate >= filters.startDate;
+                    const start = new Date(filters.startDate);
+                    start.setHours(0, 0, 0, 0);
+                    dateMatches = reportDate >= start;
                 } else if (filters.endDate) {
-                    dateMatches = reportDate <= filters.endDate;
+                    const end = new Date(filters.endDate);
+                    end.setHours(23, 59, 59, 999);
+                    dateMatches = reportDate <= end;
                 }
             }
 
             return matchesSearch && matchesCongDoan && matchesTrangThai && dateMatches;
         });
+    }, [reports, search, filters]);
 
-        // Group by date
-        const grouped = filteredReports.reduce((acc, report) => {
-            const date = new Date(report['NGÀY']).toISOString().split('T')[0];
-            if (!acc[date]) {
-                acc[date] = [];
+    // Group reports by date
+    const reportsByDate = useMemo(() => {
+        const groupedReports = {};
+
+        filteredReports.forEach(report => {
+            const dateKey = report['NGÀY'].split('T')[0];
+            if (!groupedReports[dateKey]) {
+                groupedReports[dateKey] = [];
             }
-            acc[date].push(report);
-            return acc;
-        }, {});
+            groupedReports[dateKey].push(report);
+        });
 
         // Sort dates in descending order (newest first)
-        const sortedGrouped = Object.keys(grouped)
+        return Object.keys(groupedReports)
             .sort((a, b) => new Date(b) - new Date(a))
             .reduce((acc, date) => {
-                acc[date] = grouped[date];
+                acc[date] = groupedReports[date];
                 return acc;
             }, {});
+    }, [filteredReports]);
 
-        setGroupedReports(sortedGrouped);
-    };
-
-    // Các hàm xử lý khác (giữ nguyên)
+    // Toggle date expansion
     const toggleDateExpansion = (date) => {
         setExpandedDates(prev => ({
             ...prev,
@@ -176,45 +164,177 @@ const ReportMobile = () => {
         }));
     };
 
-    const handleOpenReportModal = (report = null) => {
-        // Giữ nguyên code
-        if (report) {
-            const staffArray = report['NHÂN SỰ THAM GIA']
-                ? report['NHÂN SỰ THAM GIA'].split(',').map(name => ({
-                    value: name.trim(),
-                    label: name.trim()
-                }))
-                : [];
-
-            setCurrentReport({
-                ID: report.ID || '',
-                'NGÀY': report['NGÀY'] ? new Date(report['NGÀY']) : new Date(),
-                'CÔNG ĐOẠN': report['CÔNG ĐOẠN'] || '',
-                'KHỐI LƯỢNG': report['KHỐI LƯỢNG'] || '',
-                'NHÂN SỰ THAM GIA': staffArray,
-                'GHI CHÚ': report['GHI CHÚ'] || '',
-                'NGƯỜI NHẬP': report['NGƯỜI NHẬP'] || '',
-                'TRẠNG THÁI': report['TRẠNG THÁI'] || 'Chờ duyệt',
-                'NGƯỜI DUYỆT': report['NGƯỜI DUYỆT'] || ''
-            });
-        } else {
-            const currentUser = authUtils.getUserData();
-            setCurrentReport(prev => ({
-                ...prev,
-                'NGÀY': new Date(),
-                'CÔNG ĐOẠN': '',
-                'KHỐI LƯỢNG': '',
-                'NHÂN SỰ THAM GIA': [],
-                'GHI CHÚ': '',
-                'NGƯỜI NHẬP': currentUser?.['Họ và Tên'] || '',
-                'TRẠNG THÁI': 'Chờ duyệt',
-                'NGƯỜI DUYỆT': ''
-            }));
-        }
-        setShowReportModal(true);
+    // View report details
+    const viewReportDetails = (report) => {
+        setSelectedReport(report);
+        setIsDetailView(true);
     };
 
-    // Các hàm xử lý form (giữ nguyên)
+    // Handle filter date changes
+    const handleFilterDateChange = (field, value) => {
+        if (value) {
+            const date = new Date(value);
+            setFilters(prev => ({
+                ...prev,
+                [field]: date
+            }));
+        } else {
+            setFilters(prev => ({
+                ...prev,
+                [field]: null
+            }));
+        }
+    };
+
+    // Reset filters
+    const resetFilters = () => {
+        setFilters({
+            congDoan: '',
+            trangThai: '',
+            startDate: null,
+            endDate: null
+        });
+        setSearch('');
+    };
+
+    // Status badge colors
+    const getStatusBadgeColor = (status) => {
+        switch (status) {
+            case 'Đã duyệt':
+                return 'bg-green-100 text-green-800 border border-green-200';
+            case 'Từ chối':
+                return 'bg-red-100 text-red-800 border border-red-200';
+            case 'Chờ duyệt':
+            default:
+                return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+        }
+    };
+
+    // Calculate total production quantity for a date
+    const calculateDailyTotal = (reports) => {
+        return reports.reduce((total, report) => {
+            const quantityStr = report['KHỐI LƯỢNG'].toString().replace(/[^\d.-]/g, '');
+            const quantity = parseFloat(quantityStr) || 0;
+            return total + quantity;
+        }, 0);
+    };
+
+    // Production stage badge colors
+    const getStageBadgeColor = (stage) => {
+        const stageColors = {
+            "Cắt thô": "bg-blue-50 text-blue-700 border-blue-200",
+            "Bào, lựa phôi": "bg-purple-50 text-purple-700 border-purple-200",
+            "Finger ghép dọc 1": "bg-indigo-50 text-indigo-700 border-indigo-200",
+            "Finger ghép dọc 2": "bg-cyan-50 text-cyan-700 border-cyan-200",
+            "Bào tinh ghép ngang": "bg-teal-50 text-teal-700 border-teal-200",
+            "Trám trít": "bg-amber-50 text-amber-700 border-amber-200",
+            "Chà nhám - kiểm hàng": "bg-lime-50 text-lime-700 border-lime-200",
+            "Nhập kho thành phẩm": "bg-emerald-50 text-emerald-700 border-emerald-200"
+        };
+
+        return stageColors[stage] || "bg-gray-50 text-gray-700 border-gray-200";
+    };
+
+    // Return to reports list
+    const backToList = () => {
+        setIsDetailView(false);
+        setSelectedReport(null);
+    };
+
+    // Delete report confirmation
+    const confirmDelete = (reportId) => {
+        if (window.confirm('Bạn có chắc chắn muốn xóa báo cáo này?')) {
+            handleDelete(reportId);
+        }
+    };
+
+    // Delete report
+    const handleDelete = async (reportId) => {
+        try {
+            await authUtils.apiRequest('BC', 'Delete', {
+                "Rows": [{ "ID": reportId }]
+            });
+
+            // Update state to remove the deleted report
+            setReports(prev => prev.filter(report => report.ID !== reportId));
+
+            if (isDetailView && selectedReport?.ID === reportId) {
+                backToList();
+            }
+
+            toast.success('Đã xóa báo cáo thành công');
+        } catch (error) {
+            console.error('Error deleting report:', error);
+            toast.error('Lỗi khi xóa báo cáo');
+        }
+    };
+
+    // Approve report
+    const handleApprove = async (reportId, approve) => {
+        try {
+            const reportToUpdate = reports.find(report => report.ID === reportId);
+            if (!reportToUpdate) return;
+
+            const currentUser = authUtils.getUserData();
+            const approverName = currentUser?.['Họ và Tên'] || '';
+
+            const updatedReport = {
+                ...reportToUpdate,
+                'TRẠNG THÁI': approve ? 'Đã duyệt' : 'Từ chối',
+                'NGƯỜI DUYỆT': approverName
+            };
+
+            await authUtils.apiRequest('BC', 'Edit', {
+                "Rows": [updatedReport]
+            });
+
+            // Update state
+            setReports(prev => prev.map(report =>
+                report.ID === reportId ? updatedReport : report
+            ));
+
+            if (isDetailView && selectedReport?.ID === reportId) {
+                setSelectedReport(updatedReport);
+            }
+
+            toast.success(`Báo cáo đã được ${approve ? 'duyệt' : 'từ chối'}`);
+        } catch (error) {
+            console.error('Error approving report:', error);
+            toast.error('Lỗi khi xử lý báo cáo');
+        }
+    };
+
+    // Open add new report form
+    const openAddForm = () => {
+        // Get current user for new report
+        const currentUser = authUtils.getUserData();
+
+        setCurrentReport({
+            ID: '',
+            'NGÀY': new Date(),
+            'CÔNG ĐOẠN': '',
+            'KHỐI LƯỢNG': '',
+            'NHÂN SỰ THAM GIA': '',
+            'GHI CHÚ': '',
+            'NGƯỜI NHẬP': currentUser?.['Họ và Tên'] || '',
+            'TRẠNG THÁI': 'Chờ duyệt',
+            'NGƯỜI DUYỆT': ''
+        });
+
+        setShowAddForm(true);
+    };
+
+    // Edit existing report
+    const editReport = (report) => {
+        setCurrentReport({
+            ...report,
+            'NGÀY': new Date(report['NGÀY'])
+        });
+
+        setShowAddForm(true);
+    };
+
+    // Handle form input changes
     const handleInputChange = (field, value) => {
         setCurrentReport(prev => ({
             ...prev,
@@ -222,59 +342,38 @@ const ReportMobile = () => {
         }));
     };
 
-    const handleDateChange = (date) => {
-        setCurrentReport(prev => ({
-            ...prev,
-            'NGÀY': date
-        }));
-    };
+    // Save report (create new or update existing)
+    const saveReport = async () => {
+        // Basic validation
+        if (!currentReport['CÔNG ĐOẠN'] || !currentReport['KHỐI LƯỢNG']) {
+            toast.error('Vui lòng nhập đầy đủ thông tin bắt buộc');
+            return;
+        }
 
-    const handleStaffChange = (selectedOptions) => {
-        setCurrentReport(prev => ({
-            ...prev,
-            'NHÂN SỰ THAM GIA': selectedOptions || []
-        }));
-    };
-
-    // Các hàm validate và save (giữ nguyên)
-    const validateReport = (report) => {
-        const errors = [];
-        if (!report['CÔNG ĐOẠN']) errors.push('CÔNG ĐOẠN không được để trống');
-        if (!report['KHỐI LƯỢNG']) errors.push('KHỐI LƯỢNG không được để trống');
-        if (!report['NGÀY']) errors.push('NGÀY không được để trống');
-        if (!report['NGƯỜI NHẬP']) errors.push('NGƯỜI NHẬP không được để trống');
-        return errors;
-    };
-
-    const handleSaveReport = async () => {
-        // Giữ nguyên code
-        if (isSubmitting) return;
+        setIsSubmitting(true);
 
         try {
-            setIsSubmitting(true);
-            const errors = validateReport(currentReport);
-            if (errors.length > 0) {
-                toast.error(errors.join('\n'));
-                setIsSubmitting(false);
-                return;
-            }
-
-            const staffString = currentReport['NHÂN SỰ THAM GIA']
-                .map(staff => staff.value)
-                .join(', ');
-
+            // Format data for API
             const reportData = {
                 ...currentReport,
-                'NGÀY': currentReport['NGÀY'].toISOString().split('T')[0],
-                'NHÂN SỰ THAM GIA': staffString
+                'NGÀY': formatDateToString(currentReport['NGÀY'])
             };
 
-            if (reportData.ID) {
+            if (currentReport.ID) {
+                // Update existing report
                 await authUtils.apiRequest('BC', 'Edit', {
                     "Rows": [reportData]
                 });
-                toast.success('Cập nhật báo cáo thành công!');
+
+                // Update state
+                setReports(prev => prev.map(report =>
+                    report.ID === currentReport.ID ? reportData : report
+                ));
+
+                toast.success('Cập nhật báo cáo thành công');
             } else {
+                // Create new report
+                // Generate new ID
                 const existingReports = await authUtils.apiRequest('BC', 'Find', {});
                 const maxID = existingReports.reduce((max, report) => {
                     const id = parseInt(report.ID.replace('BC', '')) || 0;
@@ -283,347 +382,97 @@ const ReportMobile = () => {
 
                 const newID = maxID + 1;
                 const newReportID = `BC${newID.toString().padStart(3, '0')}`;
+
                 reportData.ID = newReportID;
-                reportData['TRẠNG THÁI'] = 'Chờ duyệt';
 
                 await authUtils.apiRequest('BC', 'Add', {
                     "Rows": [reportData]
                 });
-                toast.success('Thêm báo cáo thành công!');
+
+                // Update state
+                setReports(prev => [...prev, reportData]);
+
+                toast.success('Thêm báo cáo mới thành công');
             }
 
-            await fetchReports();
-            setShowReportModal(false);
+            // Close form
+            setShowAddForm(false);
         } catch (error) {
             console.error('Error saving report:', error);
-            toast.error('Có lỗi xảy ra: ' + (error.message || 'Không thể lưu báo cáo'));
+            toast.error('Lỗi khi lưu báo cáo');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    // Các hàm xử lý khác (giữ nguyên)
-    const handleDeleteReport = async (ID) => {
-        // Giữ nguyên code
-        if (window.confirm('Bạn có chắc chắn muốn xóa báo cáo này?')) {
-            try {
-                await authUtils.apiRequest('BC', 'Delete', {
-                    "Rows": [{ "ID": ID }]
-                });
-                toast.success('Xóa báo cáo thành công!');
-                await fetchReports();
-            } catch (error) {
-                console.error('Error deleting report:', error);
-                toast.error('Có lỗi xảy ra khi xóa báo cáo');
-            }
-        }
-    };
-
-    const openApprovalModal = (report) => {
-        setReportToApprove(report);
-        setShowApprovalModal(true);
-    };
-
-    const handleApprove = async (approve) => {
-        // Giữ nguyên code
-        if (!reportToApprove) return;
-
-        try {
-            const currentUser = authUtils.getUserData();
-            const approverName = currentUser?.['Họ và Tên'] || '';
-            const reportData = {
-                ...reportToApprove,
-                'TRẠNG THÁI': approve ? 'Đã duyệt' : 'Từ chối',
-                'NGƯỜI DUYỆT': approverName
-            };
-
-            await authUtils.apiRequest('BC', 'Edit', {
-                "Rows": [reportData]
-            });
-
-            toast.success(`Báo cáo đã được ${approve ? 'duyệt' : 'từ chối'}!`);
-            await fetchReports();
-            setShowApprovalModal(false);
-            setReportToApprove(null);
-        } catch (error) {
-            console.error('Error approving report:', error);
-            toast.error('Có lỗi xảy ra khi xử lý báo cáo');
-        }
-    };
-
-    // Các hàm utility (giữ nguyên)
-    const getStatusBadgeColor = (status) => {
-        switch (status) {
-            case 'Đã duyệt':
-                return 'bg-green-100 text-green-800';
-            case 'Từ chối':
-                return 'bg-red-100 text-red-800';
-            case 'Chờ duyệt':
-            default:
-                return 'bg-yellow-100 text-yellow-800';
-        }
-    };
-
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        return date.toLocaleDateString('vi-VN', options);
-    };
-
     return (
         <div className="bg-gray-50 min-h-screen pb-16">
-           {/* Header */}
-<div className="bg-white shadow-sm px-4 py-3 fixed top-0 left-0 right-0 z-10">
-    <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-            <button
-                onClick={() => window.history.back()}
-                className="p-2 text-gray-600 border border-gray-300 rounded-lg"
-            >
-                <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-lg font-semibold text-gray-800">Báo Cáo Sản Xuất</h1>
-        </div>
-        <div className="flex items-center gap-2">
-            <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="p-2 text-gray-600 border border-gray-300 rounded-lg"
-            >
-                <Filter className="w-5 h-5" />
-            </button>
-            <button
-                onClick={() => handleOpenReportModal()}
-                className="p-2 bg-blue-500 text-white rounded-lg"
-            >
-                <Plus className="w-5 h-5" />
-            </button>
-        </div>
-    </div>
-</div>
-            {/* Main Content Area */}
-            <div className="pt-2 px-4">
-                {/* Search Bar */}
-               {/* Search Bar */}
-               <div className="mt-3 mb-4">
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Tìm kiếm báo cáo..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                    </div>
-                </div>
-                {/* Filters Section */}
-                {showFilters && (
-                    <div className="mb-4 p-4 bg-white rounded-lg shadow">
-                        <h3 className="font-medium text-gray-700 mb-3">Lọc báo cáo</h3>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-sm text-gray-600 mb-1">Công đoạn</label>
-                                <select
-                                    value={filters.congDoan}
-                                    onChange={(e) => setFilters({ ...filters, congDoan: e.target.value })}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                >
-                                    <option value="">Tất cả công đoạn</option>
-                                    {congDoanList.map((type, index) => (
-                                        <option key={index} value={type}>{type}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm text-gray-600 mb-1">Trạng thái</label>
-                                <select
-                                    value={filters.trangThai}
-                                    onChange={(e) => setFilters({ ...filters, trangThai: e.target.value })}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                >
-                                    <option value="">Tất cả trạng thái</option>
-                                    <option value="Chờ duyệt">Chờ duyệt</option>
-                                    <option value="Đã duyệt">Đã duyệt</option>
-                                    <option value="Từ chối">Từ chối</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm text-gray-600 mb-1">Từ ngày</label>
-                                <DatePicker
-                                    selected={filters.startDate}
-                                    onChange={(date) => setFilters({ ...filters, startDate: date })}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                    dateFormat="dd/MM/yyyy"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm text-gray-600 mb-1">Đến ngày</label>
-                                <DatePicker
-                                    selected={filters.endDate}
-                                    onChange={(date) => setFilters({ ...filters, endDate: date })}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                    dateFormat="dd/MM/yyyy"
-                                />
-                            </div>
-
-                            <button
-                                onClick={() => setFilters({
-                                    congDoan: '',
-                                    trangThai: '',
-                                    startDate: null,
-                                    endDate: null
-                                })}
-                                className="w-full mt-3 px-4 py-2 text-blue-500 border border-blue-500 rounded-lg"
-                            >
-                                Xóa bộ lọc
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Reports List Grouped by Date */}
-                <div className="space-y-4">
-                    {Object.keys(groupedReports).length === 0 ? (
-                        <div className="bg-white rounded-lg shadow p-6 text-center">
-                            <p className="text-gray-500">Không có báo cáo phù hợp</p>
-                        </div>
-                    ) : (
-                        Object.entries(groupedReports).map(([date, dateReports]) => (
-                            <div key={date} className="bg-white rounded-lg shadow">
-                                <div
-                                    className="p-3 border-b flex justify-between items-center cursor-pointer"
-                                    onClick={() => toggleDateExpansion(date)}
-                                >
-                                    <div className="flex items-center">
-                                        <Calendar className="w-5 h-5 text-blue-500 mr-2" />
-                                        <div>
-                                            <h3 className="font-medium">{formatDate(date)}</h3>
-                                            <p className="text-xs text-gray-500">{dateReports.length} báo cáo</p>
-                                        </div>
-                                    </div>
-                                    {expandedDates[date] ?
-                                        <ChevronUp className="w-5 h-5 text-gray-400" /> :
-                                        <ChevronDown className="w-5 h-5 text-gray-400" />
-                                    }
-                                </div>
-
-                                {expandedDates[date] && (
-                                    <div className="divide-y">
-                                        {dateReports.map(report => (
-                                            <div key={report.ID} className="p-3">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex space-x-2">
-                                                        {/* Nút điều khiển báo cáo được đặt ở phía trái, trước ID */}
-                                                        <div className="flex space-x-1">
-                                                            {report['TRẠNG THÁI'] === 'Chờ duyệt' && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        openApprovalModal(report);
-                                                                    }}
-                                                                    className="p-1.5 bg-green-100 text-green-600 rounded-lg"
-                                                                >
-                                                                    <Check className="w-4 h-4" />
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleOpenReportModal(report);
-                                                                }}
-                                                                className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"
-                                                            >
-                                                                <Edit className="w-4 h-4" />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteReport(report.ID);
-                                                                }}
-                                                                className="p-1.5 bg-red-100 text-red-600 rounded-lg"
-                                                            >
-                                                                <Trash className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(report['TRẠNG THÁI'])}`}>
-                                                        {report['TRẠNG THÁI']}
-                                                    </span>
-                                                </div>
-
-                                                <div className="mt-1">
-                                                    <span className="font-medium text-gray-800">{report.ID}</span>
-                                                </div>
-
-                                                <div className="space-y-1 mt-2">
-                                                    <p className="text-sm">
-                                                        <span className="text-gray-500">Công đoạn:</span> {report['CÔNG ĐOẠN']}
-                                                    </p>
-                                                    <p className="text-sm">
-                                                        <span className="text-gray-500">Khối lượng:</span> {report['KHỐI LƯỢNG']}
-                                                    </p>
-                                                    <p className="text-sm">
-                                                        <span className="text-gray-500">Nhân sự:</span> {report['NHÂN SỰ THAM GIA']}
-                                                    </p>
-                                                    {report['GHI CHÚ'] && (
-                                                        <p className="text-sm">
-                                                            <span className="text-gray-500">Ghi chú:</span> {report['GHI CHÚ']}
-                                                        </p>
-                                                    )}
-                                                    <p className="text-sm">
-                                                        <span className="text-gray-500">Người nhập:</span> {report['NGƯỜI NHẬP']}
-                                                    </p>
-                                                    {report['NGƯỜI DUYỆT'] && (
-                                                        <p className="text-sm">
-                                                            <span className="text-gray-500">Người duyệt:</span> {report['NGƯỜI DUYỆT']}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ))
+            {/* Top app bar */}
+            <div className="sticky top-0 z-10 bg-indigo-600 text-white shadow-md">
+                <div className="px-4 py-3 flex items-center">
+                    {isDetailView || showAddForm ? (
+                        <button
+                            onClick={() => {
+                                if (showAddForm) {
+                                    setShowAddForm(false);
+                                } else {
+                                    backToList();
+                                }
+                            }}
+                            className="mr-2 p-1 rounded-full hover:bg-indigo-500"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                    ) : null}
+                    <h1 className="text-lg font-semibold flex-1">
+                        {showAddForm
+                            ? (currentReport.ID ? 'Sửa báo cáo' : 'Thêm báo cáo mới')
+                            : isDetailView ? 'Chi tiết báo cáo' : 'Báo cáo sản xuất'}
+                    </h1>
+                    {!isDetailView && !showAddForm && (
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="p-2 rounded-full hover:bg-indigo-500"
+                        >
+                            <Filter size={18} />
+                        </button>
                     )}
                 </div>
             </div>
-            {/* Report Modal */}
-            {showReportModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg w-full max-h-[90vh] overflow-y-auto mx-4">
-                        <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
-                            <h2 className="text-lg font-semibold">
+
+            {/* Main content */}
+            <div className="p-4">
+                {/* Add/Edit Form */}
+                {showAddForm && (
+                    <div className="bg-white rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                        <div className="p-4 border-b border-gray-100">
+                            <h2 className="text-lg font-bold">
                                 {currentReport.ID ? 'Cập nhật báo cáo' : 'Thêm báo cáo mới'}
                             </h2>
-                            <button
-                                onClick={() => setShowReportModal(false)}
-                                className="text-gray-500"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
                         </div>
 
                         <div className="p-4 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">NGÀY</label>
-                                <DatePicker
-                                    selected={currentReport['NGÀY']}
-                                    onChange={handleDateChange}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                    dateFormat="dd/MM/yyyy"
-                                />
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Ngày báo cáo</label>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                        <Calendar className="w-4 h-4 text-gray-500" />
+                                    </div>
+                                    <input
+                                        type="date"
+                                        value={formatDateToString(currentReport['NGÀY'])}
+                                        onChange={(e) => handleInputChange('NGÀY', new Date(e.target.value))}
+                                        className="pl-10 p-2.5 border border-gray-300 rounded-lg w-full"
+                                    />
+                                </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">CÔNG ĐOẠN</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Công đoạn <span className="text-red-500">*</span></label>
                                 <select
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
                                     value={currentReport['CÔNG ĐOẠN']}
                                     onChange={(e) => handleInputChange('CÔNG ĐOẠN', e.target.value)}
+                                    className="p-2.5 border border-gray-300 rounded-lg w-full"
                                     required
                                 >
                                     <option value="">Chọn công đoạn</option>
@@ -634,161 +483,432 @@ const ReportMobile = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">KHỐI LƯỢNG</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Khối lượng <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
-                                    placeholder="Nhập khối lượng"
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
+                                    placeholder="Nhập khối lượng (VD: 50 khối)"
                                     value={currentReport['KHỐI LƯỢNG']}
                                     onChange={(e) => handleInputChange('KHỐI LƯỢNG', e.target.value)}
+                                    className="p-2.5 border border-gray-300 rounded-lg w-full"
+                                    required
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">NHÂN SỰ THAM GIA</label>
-                                <Select
-                                    isMulti
-                                    options={staffList}
-                                    value={currentReport['NHÂN SỰ THAM GIA']}
-                                    onChange={handleStaffChange}
-                                    placeholder="Chọn nhân sự tham gia..."
-                                    className="basic-multi-select"
-                                    classNamePrefix="select"
-                                />
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nhân sự tham gia</label>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowStaffDropdown(!showStaffDropdown)}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg text-left flex justify-between items-center"
+                                    >
+                                        <span className="truncate">
+                                            {selectedStaff.length > 0
+                                                ? `Đã chọn ${selectedStaff.length} nhân sự`
+                                                : "Chọn nhân sự..."}
+                                        </span>
+                                        <ChevronDown size={16} className={`transition-transform ${showStaffDropdown ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {selectedStaff.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {selectedStaff.map((staff, idx) => (
+                                                <span key={idx} className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
+                                                    {staff}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {showStaffDropdown && (
+                                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                            <div className="sticky top-0 bg-white border-b p-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Tìm kiếm nhân sự..."
+                                                    className="w-full p-2 border border-gray-300 rounded-lg"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onChange={(e) => {
+                                                        // Filter staff list logic here if needed
+                                                    }}
+                                                />
+                                            </div>
+
+                                            <div className="p-2">
+                                                {staffList.map((staff, idx) => (
+                                                    <div key={idx} className="flex items-center p-2 hover:bg-gray-50 rounded">
+                                                        <input
+                                                            type="checkbox"
+                                                            id={`staff-${idx}`}
+                                                            checked={selectedStaff.includes(staff.value)}
+                                                            onChange={() => {
+                                                                if (selectedStaff.includes(staff.value)) {
+                                                                    const newStaff = selectedStaff.filter(item => item !== staff.value);
+                                                                    setSelectedStaff(newStaff);
+                                                                    handleInputChange('NHÂN SỰ THAM GIA', newStaff.join(', '));
+                                                                } else {
+                                                                    const newStaff = [...selectedStaff, staff.value];
+                                                                    setSelectedStaff(newStaff);
+                                                                    handleInputChange('NHÂN SỰ THAM GIA', newStaff.join(', '));
+                                                                }
+                                                            }}
+                                                            className="mr-2"
+                                                        />
+                                                        <label htmlFor={`staff-${idx}`} className="flex-1 cursor-pointer">
+                                                            {staff.label}
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="sticky bottom-0 bg-white border-t p-2 flex justify-between">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedStaff([]);
+                                                        handleInputChange('NHÂN SỰ THAM GIA', '');
+                                                    }}
+                                                    className="text-sm text-red-600"
+                                                >
+                                                    Xóa tất cả
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowStaffDropdown(false)}
+                                                    className="text-sm text-indigo-600 font-medium"
+                                                >
+                                                    Xong
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">NGƯỜI NHẬP</label>
-                                <input
-                                    type="text"
-                                    placeholder="Người nhập"
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
-                                    value={currentReport['NGƯỜI NHẬP']}
-                                    onChange={(e) => handleInputChange('NGƯỜI NHẬP', e.target.value)}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">GHI CHÚ</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
                                 <textarea
                                     placeholder="Nhập ghi chú (nếu có)"
-                                    rows={3}
-                                    className="w-full p-2 border border-gray-300 rounded-lg"
                                     value={currentReport['GHI CHÚ']}
                                     onChange={(e) => handleInputChange('GHI CHÚ', e.target.value)}
+                                    rows={3}
+                                    className="p-2.5 border border-gray-300 rounded-lg w-full"
                                 />
                             </div>
 
-                            {currentReport.ID && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Người nhập</label>
+                                <input
+                                    type="text"
+                                    placeholder="Nhập tên người nhập báo cáo"
+                                    value={currentReport['NGƯỜI NHẬP']}
+                                    onChange={(e) => handleInputChange('NGƯỜI NHẬP', e.target.value)}
+                                    className="p-2.5 border border-gray-300 rounded-lg w-full"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100">
+                            <button
+                                onClick={saveReport}
+                                disabled={isSubmitting}
+                                className="w-full py-3 bg-indigo-600 text-white rounded-lg flex justify-center items-center gap-2"
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                        Đang lưu...
+                                    </>
+                                ) : (
+                                    'Lưu báo cáo'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Detail view */}
+                {isDetailView && selectedReport && !showAddForm ? (
+                    <div className="bg-white rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                        {/* Header with status */}
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                            <div>
+                                <span className="text-xs text-gray-500">Mã báo cáo</span>
+                                <h2 className="text-lg font-bold">{selectedReport.ID}</h2>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(selectedReport['TRẠNG THÁI'])}`}>
+                                {selectedReport['TRẠNG THÁI']}
+                            </span>
+                        </div>
+
+                        {/* Report details */}
+                        <div className="p-4 space-y-4">
+                            <div className="flex justify-between">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">TRẠNG THÁI</label>
-                                    <div className={`px-3 py-2 rounded-lg text-sm ${getStatusBadgeColor(currentReport['TRẠNG THÁI'])}`}>
-                                        {currentReport['TRẠNG THÁI']}
-                                    </div>
+                                    <span className="text-xs text-gray-500">Ngày báo cáo</span>
+                                    <p className="font-medium">{formatDateForDisplay(selectedReport['NGÀY'])}</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs text-gray-500">Người nhập</span>
+                                    <p className="font-medium">{selectedReport['NGƯỜI NHẬP']}</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <span className="text-xs text-gray-500">Công đoạn</span>
+                                <div className={`mt-1 inline-block px-2.5 py-1 rounded-md text-sm font-medium ${getStageBadgeColor(selectedReport['CÔNG ĐOẠN'])}`}>
+                                    {selectedReport['CÔNG ĐOẠN']}
+                                </div>
+                            </div>
+
+                            <div>
+                                <span className="text-xs text-gray-500">Khối lượng</span>
+                                <p className="text-xl font-bold text-indigo-700">{selectedReport['KHỐI LƯỢNG']}</p>
+                            </div>
+
+                            <div>
+                                <span className="text-xs text-gray-500">Nhân sự tham gia</span>
+                                <p className="font-medium">{selectedReport['NHÂN SỰ THAM GIA']}</p>
+                            </div>
+
+                            {selectedReport['GHI CHÚ'] && (
+                                <div>
+                                    <span className="text-xs text-gray-500">Ghi chú</span>
+                                    <p className="p-3 bg-gray-50 rounded-lg text-gray-700 mt-1">{selectedReport['GHI CHÚ']}</p>
+                                </div>
+                            )}
+
+                            {selectedReport['NGƯỜI DUYỆT'] && (
+                                <div>
+                                    <span className="text-xs text-gray-500">Người duyệt</span>
+                                    <p className="font-medium">{selectedReport['NGƯỜI DUYỆT']}</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Thay đổi các nút ở dưới modal sang trái */}
-                        <div className="sticky bottom-0 bg-white p-4 border-t flex justify-start gap-3">
-                            <button
-                                onClick={handleSaveReport}
-                                disabled={isSubmitting}
-                                className={`px-4 py-2 bg-blue-500 text-white rounded-lg ${isSubmitting ? 'opacity-50' : 'active:bg-blue-600'}`}
-                            >
-                                {isSubmitting ? 'Đang lưu...' : 'Lưu báo cáo'}
-                            </button>
-                            <button
-                                onClick={() => setShowReportModal(false)}
-                                className="px-4 py-2 border border-gray-300 rounded-lg"
-                            >
-                                Hủy
-                            </button>
+                        {/* Action buttons */}
+                        <div className="p-4 border-t border-gray-100 flex justify-between">
+                            {selectedReport['TRẠNG THÁI'] === 'Chờ duyệt' ? (
+                                <div className="flex gap-2 w-full">
+                                    <button
+                                        onClick={() => handleApprove(selectedReport.ID, false)}
+                                        className="flex-1 py-2.5 bg-white border border-red-300 text-red-600 rounded-lg flex justify-center items-center gap-1.5"
+                                    >
+                                        <X size={16} />
+                                        Từ chối
+                                    </button>
+                                    <button
+                                        onClick={() => handleApprove(selectedReport.ID, true)}
+                                        className="flex-1 py-2.5 bg-green-600 text-white rounded-lg flex justify-center items-center gap-1.5"
+                                    >
+                                        <Check size={16} />
+                                        Duyệt
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2 w-full">
+                                    <button
+                                        onClick={() => confirmDelete(selectedReport.ID)}
+                                        className="flex-1 py-2.5 bg-white border border-red-300 text-red-600 rounded-lg flex justify-center items-center gap-1.5"
+                                    >
+                                        <Trash size={16} />
+                                        Xóa
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            editReport(selectedReport);
+                                            setIsDetailView(false);
+                                        }}
+                                        className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg flex justify-center items-center gap-1.5"
+                                    >
+                                        <Edit size={16} />
+                                        Chỉnh sửa
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
-                </div>
-            )}
+                ) : null}
 
-            {/* Approval Modal */}
-            {showApprovalModal && reportToApprove && (
-                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg w-full mx-4 max-w-md">
-                        <div className="p-4 border-b flex justify-between items-center">
-                            <h2 className="text-lg font-semibold">Duyệt báo cáo</h2>
-                            <button
-                                onClick={() => {
-                                    setShowApprovalModal(false);
-                                    setReportToApprove(null);
-                                }}
-                                className="text-gray-500"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
+                {/* Reports list view */}
+                {!isDetailView && !showAddForm && (
+                    <>
+                        {/* Search and filters */}
+                        <div className="mb-4">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Tìm kiếm công đoạn, mã báo cáo..."
+                                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                            </div>
                         </div>
 
-                        <div className="p-4">
-                            <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-500">ID:</span>
-                                        <span className="font-medium">{reportToApprove.ID}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-500">Ngày:</span>
-                                        <span className="font-medium">
-                                            {new Date(reportToApprove['NGÀY']).toLocaleDateString('vi-VN')}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-500">Công đoạn:</span>
-                                        <span className="font-medium">{reportToApprove['CÔNG ĐOẠN']}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-500">Khối lượng:</span>
-                                        <span className="font-medium">{reportToApprove['KHỐI LƯỢNG']}</span>
-                                    </div>
+                        {/* Filters panel */}
+                        {showFilters && (
+                            <div className="mb-4 p-4 bg-white rounded-lg shadow-sm border border-gray-100 animate-slideDown">
+                                <h3 className="font-medium mb-3">Bộ lọc</h3>
+                                <div className="space-y-3">
                                     <div>
-                                        <span className="text-sm text-gray-500">Nhân sự tham gia:</span>
-                                        <p className="font-medium text-sm mt-1">{reportToApprove['NHÂN SỰ THAM GIA']}</p>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Công đoạn</label>
+                                        <select
+                                            value={filters.congDoan}
+                                            onChange={(e) => setFilters({ ...filters, congDoan: e.target.value })}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg"
+                                        >
+                                            <option value="">Tất cả công đoạn</option>
+                                            {congDoanList.map((type, index) => (
+                                                <option key={index} value={type}>{type}</option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    {reportToApprove['GHI CHÚ'] && (
-                                        <div>
-                                            <span className="text-sm text-gray-500">Ghi chú:</span>
-                                            <p className="font-medium text-sm mt-1">{reportToApprove['GHI CHÚ']}</p>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+                                        <select
+                                            value={filters.trangThai}
+                                            onChange={(e) => setFilters({ ...filters, trangThai: e.target.value })}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg"
+                                        >
+                                            <option value="">Tất cả trạng thái</option>
+                                            <option value="Chờ duyệt">Chờ duyệt</option>
+                                            <option value="Đã duyệt">Đã duyệt</option>
+                                            <option value="Từ chối">Từ chối</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Từ ngày</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                                <Calendar className="w-4 h-4 text-gray-500" />
+                                            </div>
+                                            <input
+                                                type="date"
+                                                value={filters.startDate ? formatDateToString(filters.startDate) : ''}
+                                                onChange={(e) => handleFilterDateChange('startDate', e.target.value)}
+                                                className="pl-10 p-2.5 border rounded-lg w-full"
+                                            />
                                         </div>
-                                    )}
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-500">Người nhập:</span>
-                                        <span className="font-medium">{reportToApprove['NGƯỜI NHẬP']}</span>
                                     </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Đến ngày</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                                <Calendar className="w-4 h-4 text-gray-500" />
+                                            </div>
+                                            <input
+                                                type="date"
+                                                value={filters.endDate ? formatDateToString(filters.endDate) : ''}
+                                                onChange={(e) => handleFilterDateChange('endDate', e.target.value)}
+                                                className="pl-10 p-2.5 border rounded-lg w-full"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={resetFilters}
+                                        className="w-full py-2.5 mt-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg"
+                                    >
+                                        Xóa bộ lọc
+                                    </button>
                                 </div>
                             </div>
+                        )}
 
-                            {/* Thay đổi các nút duyệt sang bên trái */}
-                            <div className="flex justify-start gap-3">
-                                <button
-                                    onClick={() => handleApprove(true)}
-                                    className="py-3 px-5 bg-green-500 text-white rounded-lg flex items-center gap-2"
-                                >
-                                    <Check className="w-5 h-5" />
-                                    Duyệt
-                                </button>
-                                <button
-                                    onClick={() => handleApprove(false)}
-                                    className="py-3 px-5 bg-red-500 text-white rounded-lg flex items-center gap-2"
-                                >
-                                    <X className="w-5 h-5" />
-                                    Từ chối
-                                </button>
+                        {/* Loading state */}
+                        {isLoading && (
+                            <div className="flex justify-center items-center py-12">
+                                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
                             </div>
-                        </div>
-                    </div>
+                        )}
+
+                        {/* Reports grouped by date */}
+                        {!isLoading && Object.keys(reportsByDate).length === 0 && (
+                            <div className="bg-white rounded-lg shadow p-6 text-center">
+                                <p className="text-gray-500">Không tìm thấy báo cáo nào phù hợp</p>
+                            </div>
+                        )}
+
+                        {!isLoading && Object.entries(reportsByDate).map(([date, dateReports]) => (
+                            <div
+                                key={date}
+                                className="mb-4 bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100"
+                            >
+                                {/* Date header with toggle and total */}
+                                <div
+                                    className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
+                                    onClick={() => toggleDateExpansion(date)}
+                                >
+                                    <div>
+                                        <span className="text-xs text-gray-500">Ngày</span>
+                                        <h2 className="text-lg font-bold">{formatDateForDisplay(date)}</h2>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <div className="text-right mr-3">
+                                            <span className="text-xs text-gray-500">Tổng khối lượng</span>
+                                            <p className="font-bold text-indigo-700">{calculateDailyTotal(dateReports).toFixed(2)} khối</p>
+                                        </div>
+                                        {expandedDates[date] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                    </div>
+                                </div>
+
+                                {/* Expanded reports list */}
+                                {expandedDates[date] && (
+                                    <div className="divide-y divide-gray-100 animate-fadeIn">
+                                        {dateReports.map(report => (
+                                            <div
+                                                key={report.ID}
+                                                className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                                                onClick={() => viewReportDetails(report)}
+                                            >
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className={`px-2 py-1 rounded-md text-xs font-medium ${getStageBadgeColor(report['CÔNG ĐOẠN'])}`}>
+                                                        {report['CÔNG ĐOẠN']}
+                                                    </div>
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(report['TRẠNG THÁI'])}`}>
+                                                        {report['TRẠNG THÁI']}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">{report.ID}</p>
+                                                        <p className="text-lg font-bold">{report['KHỐI LƯỢNG']}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-sm text-gray-500">Người nhập</p>
+                                                        <p className="text-sm font-medium">{report['NGƯỜI NHẬP']}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </>
+                )}
+            </div>
+
+            {/* Floating action button */}
+            {!isDetailView && !showAddForm && (
+                <div className="fixed bottom-5 right-5">
+                    <button
+                        onClick={openAddForm}
+                        className="bg-indigo-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+                        aria-label="Thêm báo cáo mới"
+                    >
+                        <Plus size={24} />
+                    </button>
                 </div>
             )}
 
-            {/* Đã bỏ Bottom Navigation Bar để đặt các nút vào header */}
-
-            {/* Toast Container */}
+            {/* Toast notifications */}
             <ToastContainer
                 position="top-center"
                 autoClose={3000}
@@ -799,11 +919,31 @@ const ReportMobile = () => {
                 pauseOnFocusLoss
                 draggable
                 pauseOnHover
-                theme="colored"
-                style={{ marginTop: '50px' }}
+                theme="light"
             />
+
+            {/* Add necessary CSS for animations */}
+            <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+        
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
+        }
+      `}</style>
         </div>
     );
 };
 
-export default ReportMobile;
+export default MobileReportManagement;
