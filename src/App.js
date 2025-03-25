@@ -7,11 +7,12 @@ import Dashboard from './pages/Dashboard';
 import MainLayout from './layouts/MainLayout';
 import authUtils from './utils/authUtils';
 import Profile from './pages/Profile';
-import Test from './pages/test';
 import Users from './pages/UserManagement';
-import NVLManagement from './pages/Nvl';
-import TPManagement from './pages/Tp';
 import ReportManagement from './pages/BaoCao';
+import XuatNhapKhoForm from './pages/XuatNhapKhoForm';
+import DMHHManagement  from './pages/DMHHManagement';
+import XuatNhapKhoManager from './pages/XuatNhapKhoManager';
+import CongDoanManagement from './pages/CongDoan';
 import ReportMobile from './pages/BaoCaoMobie';
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -41,9 +42,12 @@ function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/users" element={<Users />} />
-                  <Route path="/test" element={<Test />} />
-                  <Route path="/nvl" element={<NVLManagement />} />
-                  <Route path="/tp" element={<TPManagement />} />
+                  <Route path="/xuatnhapfrom" element={<XuatNhapKhoForm />} />
+                  <Route path="/xuatnhapfrom/:maPhieu" element={<XuatNhapKhoForm />} />
+                  <Route path="/dmhh" element={<DMHHManagement />} />
+                  <Route path="/xuatnhapkho" element={<XuatNhapKhoManager />} />
+                  
+                  <Route path="/congdoan" element={<CongDoanManagement />} />
                   <Route path="/report" element={<ReportManagement />} />
                   <Route path="/reportMobile" element={<ReportMobile />} />
 

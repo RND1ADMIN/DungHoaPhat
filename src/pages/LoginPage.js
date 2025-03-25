@@ -56,7 +56,7 @@ const LoginPage = () => {
                 } else {
                     navigate(config.ROUTES.DASHBOARD);
                 }
-            }, 1500);
+            }, 300);
         } catch (error) {
             toast.error(error.message);
         } finally {

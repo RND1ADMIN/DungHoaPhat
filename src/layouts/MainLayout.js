@@ -83,8 +83,11 @@ const MainLayout = ({ children }) => {
         { text: 'Tổng quan', icon: LayoutDashboard, path: '/dashboard' },
      
         { text: 'Quản lý người dùng', icon: User, path: '/users' },
-        { text: 'Nguyên Vật Liệu', icon: UtensilsCrossed, path: '/nvl' },
-        { text: 'Thành Phẩm', icon: Table, path: '/tp' },
+        { text: 'Quản lý hàng hóa', icon: Wallet, path: '/dmhh' },
+        { text: 'Tạo phiếu xuất nhập', icon: Table, path: '/xuatnhapfrom' },
+        { text: 'Quản lý xuất nhập kho', icon: Table, path: '/xuatnhapkho' },
+
+        { text: 'Công đoạn', icon: Receipt, path: '/congdoan' },
         {
             text: 'Báo Cáo sản lượng',
             icon: UtensilsCrossed,

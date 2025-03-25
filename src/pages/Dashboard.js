@@ -4,8 +4,8 @@ import {
     CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import {
-    UtensilsCrossed, Table as TableIcon, Receipt,
-    TrendingUp, Users, Loader2, Calendar
+    Package, Warehouse, Factory, 
+    TrendingUp, AlertTriangle, Loader2, Calendar
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -15,11 +15,10 @@ import authUtils from '../utils/authUtils';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-const formatCurrency = (value) => {
-    if (value >= 1e9) return (value / 1e9).toFixed(1) + ' tỷ';
+const formatQuantity = (value) => {
     if (value >= 1e6) return (value / 1e6).toFixed(1) + ' triệu';
     if (value >= 1e3) return (value / 1e3).toFixed(1) + ' nghìn';
-    return value + 'đ';
+    return value;
 };
 
 const StatCardSkeleton = () => (
@@ -50,19 +49,19 @@ const ChartSkeleton = ({ height = "h-72" }) => (
     </Card>
 );
 
-const StatCard = ({ title, value, icon: Icon, color, percentageChange, isCurrency }) => (
+const StatCard = ({ title, value, icon: Icon, color, percentageChange, unit }) => (
     <Card className="transition-transform duration-200 hover:scale-[1.02]">
         <CardContent className="p-4">
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-sm text-gray-500 font-medium mb-1">{title}</p>
                     <h3 className="text-xl font-bold text-gray-800">
-                        {isCurrency ? formatCurrency(value) : value}
+                        {formatQuantity(value)} {unit}
                     </h3>
                     {percentageChange !== undefined && (
                         <p className={`text-xs mt-1 flex items-center ${percentageChange > 0 ? 'text-green-500' : 'text-red-500'}`}>
                             <span className={`mr-1 ${percentageChange > 0 ? 'rotate-0' : 'rotate-180'}`}>↑</span>
-                            {Math.abs(percentageChange)}% so với hôm qua
+                            {Math.abs(percentageChange)}% so với tháng trước
                         </p>
                     )}
                 </div>
@@ -74,13 +73,12 @@ const StatCard = ({ title, value, icon: Icon, color, percentageChange, isCurrenc
     </Card>
 );
 
-const Dashboard = () => {
+const InventoryDashboard = () => {
     const [allData, setAllData] = useState({
+        rawMaterials: [],
         products: [],
-        tables: [],
-        salesByHour: [],
-        orders: [],
-        orderDetails: []
+        inventory: [],
+        production: []
     });
     const [dateRange, setDateRange] = useState({
         start: new Date(new Date().setDate(new Date().getDate() - 30)),
@@ -91,10 +89,10 @@ const Dashboard = () => {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [analyticsData, setAnalyticsData] = useState({
-        revenueData: [],
-        productStats: [],
-        tableUsage: [],
-        paymentStats: {},
+        productionTrend: [],
+        materialUsage: [],
+        inventoryLevels: [],
+        lowStockItems: [],
     });
 
     const handleTimeFilterChange = (value) => {
@@ -120,121 +118,139 @@ const Dashboard = () => {
         setDateRange({ start, end });
     };
 
-
     const handleRefresh = async () => {
         setLoading(true);
         try {
-            const [products, tables, orders, orderDetails] = await Promise.all([
-                authUtils.apiRequest('Sản phẩm', 'Find', {}),
-                authUtils.apiRequest('DSBAN', 'Find', {}),
-                authUtils.apiRequest('HOADON', 'Find', {}),
-                authUtils.apiRequest('HOADONDETAIL', 'Find', {})
+            const [rawMaterials, products, inventory, production] = await Promise.all([
+                authUtils.apiRequest('DMHH', 'Find', {}),
+                authUtils.apiRequest('DMHH', 'Find', {}),
+                authUtils.apiRequest('Kho', 'Find', {}),
+                authUtils.apiRequest('BC', 'Find', {})
             ]);
-            setAllData({ products, tables, orders, orderDetails });
+            setAllData({ rawMaterials, products, inventory, production });
         } catch (error) {
             console.error('Error refreshing data:', error);
+        } finally {
+            setLoading(false);
         }
     };
+
     const processData = () => {
         try {
-            const filteredOrders = allData.orders.filter(order => {
-                const orderDate = new Date(order.Ngày);
-                return orderDate >= dateRange.start && orderDate <= dateRange.end;
+            // Lọc dữ liệu sản xuất theo khoảng thời gian
+            const filteredProduction = allData.production.filter(item => {
+                const itemDate = new Date(item['NGÀY']);
+                return itemDate >= dateRange.start && itemDate <= dateRange.end;
             });
 
-            const totalRevenue = filteredOrders.reduce((sum, order) =>
-                sum + (Number(order['Khách trả']) || 0), 0
+            // Tính tổng sản lượng
+            const totalProduction = filteredProduction.reduce((sum, item) => 
+                sum + (Number(item.SoLuong) || 0), 0
             );
-            // Add to processData function
-            const salesByHour = filteredOrders.reduce((acc, order) => {
-                const hour = new Date(order.Ngày).getHours();
-                acc[hour] = (acc[hour] || 0) + Number(order['Khách trả'] || 0);
-                return acc;
-            }, {});
+            
+            // Tính số lượng nguyên vật liệu và sản phẩm
+            const totalRawMaterials = allData.rawMaterials.length;
+            const totalProducts = allData.products.length;
+            
+            // Tính tổng số lượng trong kho
+            const totalInventory = allData.inventory.reduce((sum, item) => 
+                sum + (Number(item.SoLuongTon) || 0), 0
+            );
+            
+            // Đếm số mặt hàng sắp hết
+            const lowStockCount = allData.inventory.filter(item => 
+                (Number(item.SoLuongTon) || 0) < (Number(item.MucTonToiThieu) || 10)
+            ).length;
 
-            const hourlyData = Array.from({ length: 24 }, (_, i) => ({
-                hour: `${i}:00`,
-                sales: salesByHour[i] || 0
-            }));
-
-            setAnalyticsData(prev => ({ ...prev, salesByHour: hourlyData }));
-            const today = new Date().setHours(0, 0, 0, 0);
-            const yesterday = new Date(today - 86400000).setHours(0, 0, 0, 0);
-
-            const customersToday = allData.orders.filter(order => {
-                const orderDate = new Date(order.Ngày).setHours(0, 0, 0, 0);
-                return orderDate === today;
-            }).length;
-
-            const customersYesterday = allData.orders.filter(order => {
-                const orderDate = new Date(order.Ngày).setHours(0, 0, 0, 0);
-                return orderDate === yesterday;
-            }).length;
-
-            const customerPercentageChange = customersYesterday
-                ? ((customersToday - customersYesterday) / customersYesterday) * 100
+            // Tính % thay đổi sản lượng so với tháng trước
+            const currentMonth = new Date().getMonth();
+            const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+            
+            const currentMonthProduction = allData.production.filter(item => {
+                const date = new Date(item.NgaySanXuat);
+                return date.getMonth() === currentMonth;
+            }).reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
+            
+            const lastMonthProduction = allData.production.filter(item => {
+                const date = new Date(item.NgaySanXuat);
+                return date.getMonth() === lastMonth;
+            }).reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
+            
+            const productionPercentageChange = lastMonthProduction 
+                ? ((currentMonthProduction - lastMonthProduction) / lastMonthProduction) * 100 
                 : 0;
 
             setStats({
-                products: allData.products.length,
-                tables: allData.tables.length,
-                orders: filteredOrders.length,
-                revenue: totalRevenue,
-                customersToday,
-                customerPercentageChange: parseFloat(customerPercentageChange.toFixed(1))
+                totalRawMaterials,
+                totalProducts,
+                totalInventory,
+                totalProduction,
+                lowStockCount,
+                productionPercentageChange: parseFloat(productionPercentageChange.toFixed(1))
             });
 
-            const revenueByDate = filteredOrders.reduce((acc, order) => {
-                const date = new Date(order.Ngày).toLocaleDateString('vi-VN');
-                acc[date] = (acc[date] || 0) + Number(order['Khách trả'] || 0);
+            // Xu hướng sản xuất theo ngày
+            const productionByDate = filteredProduction.reduce((acc, item) => {
+                const date = new Date(item.NgaySanXuat).toLocaleDateString('vi-VN');
+                acc[date] = (acc[date] || 0) + Number(item.SoLuong || 0);
                 return acc;
             }, {});
 
-            const revenueData = Object.entries(revenueByDate)
+            const productionTrend = Object.entries(productionByDate)
                 .map(([date, amount]) => ({
                     date,
-                    revenue: amount
+                    production: amount
                 }))
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            const productSales = allData.orderDetails.reduce((acc, detail) => {
-                acc[detail['Tên sản phẩm']] = (acc[detail['Tên sản phẩm']] || 0) +
-                    Number(detail['Số lượng'] || 0);
-                return acc;
-            }, {});
+            // Thống kê sử dụng nguyên vật liệu
+            const materialUsageData = allData.rawMaterials.map(material => {
+                const usage = filteredProduction.reduce((sum, item) => {
+                    if (item.IDNguyenVatLieu === material.ID) {
+                        return sum + (Number(item.SoLuongSuDung) || 0);
+                    }
+                    return sum;
+                }, 0);
+                
+                return {
+                    name: material.TenNguyenVatLieu,
+                    usage: usage
+                };
+            }).sort((a, b) => b.usage - a.usage).slice(0, 5);
 
-            const productStats = Object.entries(productSales)
-                .map(([name, quantity]) => ({
-                    name,
-                    quantity
-                }))
-                .sort((a, b) => b.quantity - a.quantity)
+            // Mức tồn kho hiện tại
+            const inventoryLevels = allData.inventory
+                .filter(item => item.SanPhamID)
+                .map(item => {
+                    const product = allData.products.find(p => p.ID === item.SanPhamID);
+                    return {
+                        name: product ? product.TenSanPham : `Sản phẩm #${item.SanPhamID}`,
+                        current: Number(item.SoLuongTon) || 0,
+                        minimum: Number(item.MucTonToiThieu) || 10
+                    };
+                })
+                .sort((a, b) => a.current - a.minimum - (b.current - b.minimum))
                 .slice(0, 5);
 
-            const tableStats = allData.tables.map(table => {
-                const tableOrders = filteredOrders.filter(order => order.IDBAN === table.IDBAN);
-                const tableRevenue = tableOrders.reduce((sum, order) =>
-                    sum + (Number(order['Khách trả']) || 0), 0
-                );
-                return {
-                    name: table['Tên bàn'],
-                    customers: tableOrders.length,
-                    revenue: tableRevenue
-                };
-            }).sort((a, b) => b.customers - a.customers).slice(0, 5);
-
-            const avgOrderValue = totalRevenue / filteredOrders.length;
-            const paymentStats = {
-                totalOrders: filteredOrders.length,
-                totalRevenue,
-                avgOrderValue
-            };
+            // Mặt hàng sắp hết trong kho
+            const lowStockItems = allData.inventory
+                .filter(item => (Number(item.SoLuongTon) || 0) < (Number(item.MucTonToiThieu) || 10))
+                .map(item => {
+                    const product = allData.products.find(p => p.ID === item.SanPhamID);
+                    return {
+                        name: product ? product.TenSanPham : `Sản phẩm #${item.SanPhamID}`,
+                        current: Number(item.SoLuongTon) || 0,
+                        minimum: Number(item.MucTonToiThieu) || 10,
+                        percentage: Math.round((item.SoLuongTon / item.MucTonToiThieu) * 100)
+                    };
+                })
+                .sort((a, b) => a.current / a.minimum - b.current / b.minimum);
 
             setAnalyticsData({
-                revenueData,
-                productStats,
-                tableUsage: tableStats,
-                paymentStats
+                productionTrend,
+                materialUsage: materialUsageData,
+                inventoryLevels,
+                lowStockItems
             });
         } catch (error) {
             console.error('Error processing data:', error);
@@ -246,14 +262,14 @@ const Dashboard = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                if (!allData.products.length) {
-                    const [products, tables, orders, orderDetails] = await Promise.all([
-                        authUtils.apiRequest('Sản phẩm', 'Find', {}),
-                        authUtils.apiRequest('DSBAN', 'Find', {}),
-                        authUtils.apiRequest('HOADON', 'Find', {}),
-                        authUtils.apiRequest('HOADONDETAIL', 'Find', {})
+                if (!allData.rawMaterials.length) {
+                    const [rawMaterials, products, inventory, production] = await Promise.all([
+                        authUtils.apiRequest('NguyenVatLieu', 'Find', {}),
+                        authUtils.apiRequest('SanPham', 'Find', {}),
+                        authUtils.apiRequest('Kho', 'Find', {}),
+                        authUtils.apiRequest('SanLuong', 'Find', {})
                     ]);
-                    setAllData({ products, tables, orders, orderDetails });
+                    setAllData({ rawMaterials, products, inventory, production });
                 }
                 processData();
             } catch (error) {
@@ -275,51 +291,50 @@ const Dashboard = () => {
 
     const statCards = [
         {
-            title: 'Tổng sản phẩm',
-            value: stats?.products || 0,
-            icon: UtensilsCrossed,
+            title: 'Nguyên vật liệu',
+            value: stats?.totalRawMaterials || 0,
+            icon: Package,
             color: 'bg-blue-500',
-            isCurrency: false
+            unit: 'loại'
         },
         {
-            title: 'Số bàn',
-            value: stats?.tables || 0,
-            icon: TableIcon,
+            title: 'Sản phẩm',
+            value: stats?.totalProducts || 0,
+            icon: Factory,
             color: 'bg-green-500',
-            isCurrency: false
+            unit: 'loại'
         },
         {
-            title: 'Đơn hàng',
-            value: stats?.orders || 0,
-            icon: Receipt,
+            title: 'Tổng tồn kho',
+            value: stats?.totalInventory || 0,
+            icon: Warehouse,
             color: 'bg-orange-500',
-            isCurrency: false
+            unit: 'đơn vị'
         },
         {
-            title: 'Doanh thu',
-            value: stats?.revenue || 0,
+            title: 'Tổng sản lượng',
+            value: stats?.totalProduction || 0,
             icon: TrendingUp,
             color: 'bg-red-500',
-            isCurrency: true
+            unit: 'đơn vị',
+            percentageChange: stats?.productionPercentageChange
         },
         {
-            title: 'Khách hôm nay',
-            value: stats?.customersToday || 0,
-            icon: Users,
-            color: 'bg-purple-500',
-            percentageChange: stats?.customerPercentageChange,
-            isCurrency: false
+            title: 'Sắp hết hàng',
+            value: stats?.lowStockCount || 0,
+            icon: AlertTriangle,
+            color: 'bg-yellow-500',
+            unit: 'mặt hàng'
         }
     ];
 
     return (
         <div className="p-4 bg-gray-50 min-h-screen">
-            <div className=" mx-auto space-y-4">
+            <div className="mx-auto space-y-4">
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-
                         <h1 className="text-2xl font-bold text-gray-900">
-                            Tổng quan
+                            Báo Cáo Kho & Sản Xuất
                         </h1>
 
                         <div className="flex flex-wrap items-center gap-4">
@@ -360,7 +375,6 @@ const Dashboard = () => {
                                 />
                             </div>
                         </div>
-
                     </div>
                 </div>
 
@@ -383,7 +397,7 @@ const Dashboard = () => {
                             <Card className="lg:col-span-2">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-base font-semibold">
-                                        Xu hướng doanh thu
+                                        Xu hướng sản lượng
                                     </CardTitle>
                                     <div className="flex gap-2">
                                         <Button
@@ -406,27 +420,27 @@ const Dashboard = () => {
                                     <div className="h-72">
                                         <ResponsiveContainer width="100%" height="100%">
                                             {chartType === 'line' ? (
-                                                <LineChart data={analyticsData.revenueData}>
+                                                <LineChart data={analyticsData.productionTrend}>
                                                     <CartesianGrid strokeDasharray="3 3" />
                                                     <XAxis dataKey="date" />
-                                                    <YAxis tickFormatter={formatCurrency} />
-                                                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                                                    <YAxis />
+                                                    <Tooltip />
                                                     <Legend />
                                                     <Line
                                                         type="monotone"
-                                                        dataKey="revenue"
+                                                        dataKey="production"
                                                         stroke="#0088FE"
-                                                        name="Doanh thu"
+                                                        name="Sản lượng"
                                                     />
                                                 </LineChart>
                                             ) : (
-                                                <BarChart data={analyticsData.revenueData}>
+                                                <BarChart data={analyticsData.productionTrend}>
                                                     <CartesianGrid strokeDasharray="3 3" />
                                                     <XAxis dataKey="date" />
-                                                    <YAxis tickFormatter={formatCurrency} />
-                                                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                                                    <YAxis />
+                                                    <Tooltip />
                                                     <Legend />
-                                                    <Bar dataKey="revenue" fill="#0088FE" name="Doanh thu" />
+                                                    <Bar dataKey="production" fill="#0088FE" name="Sản lượng" />
                                                 </BarChart>
                                             )}
                                         </ResponsiveContainer>
@@ -437,18 +451,18 @@ const Dashboard = () => {
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-base font-semibold">
-                                        Top 5 sản phẩm bán chạy
+                                        Top 5 nguyên vật liệu sử dụng nhiều nhất
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-72">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={analyticsData.productStats}>
+                                            <BarChart data={analyticsData.materialUsage}>
                                                 <CartesianGrid strokeDasharray="3 3" />
                                                 <XAxis dataKey="name" />
                                                 <YAxis />
                                                 <Tooltip />
-                                                <Bar dataKey="quantity" fill="#00C49F" name="Số lượng" />
+                                                <Bar dataKey="usage" fill="#00C49F" name="Lượng sử dụng" />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -458,33 +472,25 @@ const Dashboard = () => {
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-base font-semibold">
-                                        Thống kê sử dụng bàn
+                                        Mức tồn kho hiện tại
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-72">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={analyticsData.tableUsage}
-                                                    dataKey="customers"
-                                                    nameKey="name"
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    outerRadius={80}
-                                                    label={({ name, customers, revenue }) =>
-                                                        `${name}: ${customers} ĐH | DT ${formatCurrency(revenue)}`}
-                                                >
-                                                    {analyticsData.tableUsage.map((entry, index) => (
-                                                        <Cell
-                                                            key={`cell-${index}`}
-                                                            fill={COLORS[index % COLORS.length]}
-                                                        />
-                                                    ))}
-                                                </Pie>
+                                            <BarChart 
+                                                data={analyticsData.inventoryLevels}
+                                                layout="vertical"
+                                                margin={{ left: 100 }}
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis type="number" />
+                                                <YAxis dataKey="name" type="category" width={100} />
                                                 <Tooltip />
                                                 <Legend />
-                                            </PieChart>
+                                                <Bar dataKey="current" fill="#0088FE" name="Tồn kho hiện tại" />
+                                                <Bar dataKey="minimum" fill="#FF8042" name="Mức tồn tối thiểu" />
+                                            </BarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </CardContent>
@@ -496,35 +502,51 @@ const Dashboard = () => {
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base font-semibold">
-                            Tổng quan thanh toán
+                            Cảnh báo hàng sắp hết
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-blue-50 p-4 rounded-lg">
-                                <p className="text-sm text-blue-600 font-medium">
-                                    Tổng số đơn hàng
-                                </p>
-                                <p className="text-xl font-bold mt-1">
-                                    {analyticsData.paymentStats.totalOrders}
-                                </p>
-                            </div>
-                            <div className="bg-green-50 p-4 rounded-lg">
-                                <p className="text-sm text-green-600 font-medium">
-                                    Tổng doanh thu
-                                </p>
-                                <p className="text-xl font-bold mt-1">
-                                    {formatCurrency(analyticsData.paymentStats.totalRevenue)}
-                                </p>
-                            </div>
-                            <div className="bg-orange-50 p-4 rounded-lg">
-                                <p className="text-sm text-orange-600 font-medium">
-                                    Giá trị đơn trung bình
-                                </p>
-                                <p className="text-xl font-bold mt-1">
-                                    {formatCurrency(analyticsData.paymentStats.avgOrderValue)}
-                                </p>
-                            </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr>
+                                        <th className="pb-2 font-medium text-gray-500">Sản phẩm</th>
+                                        <th className="pb-2 font-medium text-gray-500">Tồn kho</th>
+                                        <th className="pb-2 font-medium text-gray-500">Mức tối thiểu</th>
+                                        <th className="pb-2 font-medium text-gray-500">Trạng thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {analyticsData.lowStockItems.map((item, index) => (
+                                        <tr key={index} className="border-t border-gray-100">
+                                            <td className="py-3">{item.name}</td>
+                                            <td className="py-3">{item.current}</td>
+                                            <td className="py-3">{item.minimum}</td>
+                                            <td className="py-3">
+                                                <div className="flex items-center">
+                                                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                                                        <div
+                                                            className={`h-2.5 rounded-full ${
+                                                                item.percentage < 30 ? 'bg-red-500' : 
+                                                                item.percentage < 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                                            }`}
+                                                            style={{ width: `${item.percentage}%` }}
+                                                        ></div>
+                                                    </div>
+                                                    <span 
+                                                        className={`text-xs font-medium ${
+                                                            item.percentage < 30 ? 'text-red-500' : 
+                                                            item.percentage < 70 ? 'text-yellow-500' : 'text-green-500'
+                                                        }`}
+                                                    >
+                                                        {item.percentage}%
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </CardContent>
                 </Card>
@@ -533,4 +555,4 @@ const Dashboard = () => {
     );
 };
 
-export default Dashboard;
+export default InventoryDashboard;
