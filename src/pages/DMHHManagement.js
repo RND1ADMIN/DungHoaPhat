@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit, Trash, Search, Filter, Image, X, Upload } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -13,7 +13,8 @@ const DMHHManagement = () => {
         'LOẠI': 'THÀNH PHẨM', // Default value
         'HÌNH ẢNH': '',
         'QUY CÁCH': '',
-        'GHI CHÚ': ''
+        'GHI CHÚ': '',
+        'ĐƠN GIÁ': ''
     });
     const [showModal, setShowModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,7 +26,10 @@ const DMHHManagement = () => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [filterType, setFilterType] = useState('TẤT CẢ');
     const [selectedImage, setSelectedImage] = useState(null);
-
+    // Add a ref for the drop zone
+    const dropZoneRef = useRef(null);
+    // Add drag state to show visual feedback
+    const [isDragging, setIsDragging] = useState(false);
     // Fetch data
     const fetchDMHH = async () => {
         try {
@@ -79,7 +83,58 @@ const DMHHManagement = () => {
         }
     };
 
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
 
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+
+            // Validate file before proceeding
+            const validation = authUtils.validateImage(file);
+
+            if (!validation.isValid) {
+                toast.error(validation.errors.join('\n'));
+                return;
+            }
+
+            // Handle the dropped file
+            setCurrentItem(prev => ({
+                ...prev,
+                'FILE_IMAGE': file
+            }));
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setSelectedImage(reader.result);
+            };
+            reader.readAsDataURL(file);
+
+            // Upload the image right away if needed
+            if (authUtils.shouldUploadImmediately) {
+                handleImageUpload(file);
+            }
+        }
+    };
     // Modal handlers
     const handleOpenModal = (item = null) => {
         if (item) {
@@ -90,7 +145,8 @@ const DMHHManagement = () => {
                 'LOẠI': item['LOẠI'] || 'THÀNH PHẨM',
                 'HÌNH ẢNH': item['HÌNH ẢNH'] || '',
                 'QUY CÁCH': item['QUY CÁCH'] || '',
-                'GHI CHÚ': item['GHI CHÚ'] || ''
+                'GHI CHÚ': item['GHI CHÚ'] || '',
+                'ĐƠN GIÁ': item['ĐƠN GIÁ'] || ''
             });
             setSelectedImage(item['HÌNH ẢNH'] || null);
         } else {
@@ -101,7 +157,8 @@ const DMHHManagement = () => {
                 'LOẠI': 'THÀNH PHẨM',
                 'HÌNH ẢNH': '',
                 'QUY CÁCH': '',
-                'GHI CHÚ': ''
+                'GHI CHÚ': '',
+                'ĐƠN GIÁ': ''
             });
             setSelectedImage(null);
         }
@@ -118,7 +175,8 @@ const DMHHManagement = () => {
             'LOẠI': 'THÀNH PHẨM',
             'HÌNH ẢNH': '',
             'QUY CÁCH': '',
-            'GHI CHÚ': ''
+            'GHI CHÚ': '',
+            'ĐƠN GIÁ': ''
         });
     };
 
@@ -134,21 +192,21 @@ const DMHHManagement = () => {
     const handleImageChange = (event) => {
         if (event.target.files && event.target.files[0]) {
             const file = event.target.files[0];
-            
+
             // Validate file trước khi lưu vào state
             const validation = authUtils.validateImage(file);
-            
+
             if (!validation.isValid) {
                 toast.error(validation.errors.join('\n'));
                 return;
             }
-            
+
             // Lưu file vào state
             setCurrentItem(prev => ({
                 ...prev,
                 'FILE_IMAGE': file // Lưu file để upload sau
             }));
-            
+
             // Hiển thị preview
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -168,7 +226,7 @@ const DMHHManagement = () => {
     // Save item
     const handleSaveItem = async () => {
         if (isSubmitting) return;
-    
+
         try {
             setIsSubmitting(true);
             const errors = validateItem(currentItem);
@@ -177,10 +235,10 @@ const DMHHManagement = () => {
                 setIsSubmitting(false);
                 return;
             }
-    
+
             // Tạo một bản sao của item để xử lý
             let itemToSave = { ...currentItem };
-            
+
             // Nếu có file ảnh mới, upload lên server
             if (itemToSave['FILE_IMAGE']) {
                 try {
@@ -197,10 +255,10 @@ const DMHHManagement = () => {
                     return;
                 }
             }
-            
+
             // Xóa trường FILE_IMAGE trước khi gửi đến API
             delete itemToSave['FILE_IMAGE'];
-    
+
             if (isEditMode) {
                 // Edit existing item
                 await authUtils.apiRequest('DMHH', 'Edit', {
@@ -210,24 +268,24 @@ const DMHHManagement = () => {
             } else {
                 // Create new item
                 const existingItems = await authUtils.apiRequest('DMHH', 'Find', {});
-    
+
                 // Check if item code already exists
-                const exists = existingItems.some(item => 
+                const exists = existingItems.some(item =>
                     item['MÃ HÀNG'].toLowerCase() === itemToSave['MÃ HÀNG'].toLowerCase()
                 );
-    
+
                 if (exists) {
                     toast.error('Mã hàng này đã tồn tại!');
                     setIsSubmitting(false);
                     return;
                 }
-    
+
                 await authUtils.apiRequest('DMHH', 'Add', {
                     "Rows": [itemToSave]
                 });
                 toast.success('Thêm hàng hóa mới thành công!');
             }
-    
+
             await fetchDMHH();
             handleCloseModal();
         } catch (error) {
@@ -358,8 +416,8 @@ const DMHHManagement = () => {
                                     <button
                                         onClick={() => setFilterType('TẤT CẢ')}
                                         className={`px-3 py-1.5 rounded-full text-sm ${filterType === 'TẤT CẢ'
-                                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                            ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                                             }`}
                                     >
                                         Tất cả
@@ -367,8 +425,8 @@ const DMHHManagement = () => {
                                     <button
                                         onClick={() => setFilterType('THÀNH PHẨM')}
                                         className={`px-3 py-1.5 rounded-full text-sm ${filterType === 'THÀNH PHẨM'
-                                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                                             }`}
                                     >
                                         Thành phẩm
@@ -376,8 +434,8 @@ const DMHHManagement = () => {
                                     <button
                                         onClick={() => setFilterType('NGUYÊN VẬT LIỆU')}
                                         className={`px-3 py-1.5 rounded-full text-sm ${filterType === 'NGUYÊN VẬT LIỆU'
-                                                ? 'bg-green-100 text-green-800 border border-green-200'
-                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                            ? 'bg-green-100 text-green-800 border border-green-200'
+                                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                                             }`}
                                     >
                                         Nguyên vật liệu
@@ -435,6 +493,11 @@ const DMHHManagement = () => {
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Quy cách
                                     </th>
+                                    <th scope="col"
+                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                                        onClick={() => requestSort('ĐƠN GIÁ')}>
+                                        Đơn giá {getSortIcon('ĐƠN GIÁ')}
+                                    </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Ghi chú
                                     </th>
@@ -455,8 +518,8 @@ const DMHHManagement = () => {
                                             </td>
                                             <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${item['LOẠI'] === 'THÀNH PHẨM'
-                                                        ? 'bg-blue-100 text-blue-800'
-                                                        : 'bg-green-100 text-green-800'
+                                                    ? 'bg-blue-100 text-blue-800'
+                                                    : 'bg-green-100 text-green-800'
                                                     }`}>
                                                     {item['LOẠI']}
                                                 </span>
@@ -478,6 +541,9 @@ const DMHHManagement = () => {
                                             </td>
                                             <td className="px-4 py-4 text-sm text-gray-700">
                                                 <div className="max-w-xs truncate">{item['QUY CÁCH'] || '—'}</div>
+                                            </td>
+                                            <td className="px-4 py-4 text-sm text-gray-700">
+                                                {item['ĐƠN GIÁ'] ? `${item['ĐƠN GIÁ'].toLocaleString()} đ` : '—'}
                                             </td>
                                             <td className="px-4 py-4 text-sm text-gray-700">
                                                 <div className="max-w-xs truncate">{item['GHI CHÚ'] || '—'}</div>
@@ -518,7 +584,7 @@ const DMHHManagement = () => {
             {/* Add/Edit DMHH Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-                    <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+                    <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-6">
                         <div className="flex justify-between items-center border-b border-gray-200 pb-4 mb-5">
                             <h2 className="text-xl font-bold text-gray-800">
                                 {isEditMode ? 'Cập nhật hàng hóa' : 'Thêm hàng hóa mới'}
@@ -531,169 +597,223 @@ const DMHHManagement = () => {
                             </button>
                         </div>
 
-                        <div className="space-y-5">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Mã hàng <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={currentItem['MÃ HÀNG']}
-                                    onChange={(e) => handleInputChange('MÃ HÀNG', e.target.value)}
-                                    className={`p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500 ${isEditMode ? 'bg-gray-100' : ''}`}
-                                    placeholder="Nhập mã hàng"
-                                    readOnly={isEditMode}
-                                    required
-                                />
-                                {isEditMode && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Mã hàng không thể thay đổi sau khi đã tạo.
-                                    </p>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Tên hàng <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={currentItem['TÊN HÀNG']}
-                                    onChange={(e) => handleInputChange('TÊN HÀNG', e.target.value)}
-                                    className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
-                                    placeholder="Nhập tên hàng"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Loại <span className="text-red-500">*</span>
-                                </label>
-                                <div className="flex space-x-4">
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            name="type"
-                                            value="THÀNH PHẨM"
-                                            checked={currentItem['LOẠI'] === 'THÀNH PHẨM'}
-                                            onChange={(e) => handleInputChange('LOẠI', e.target.value)}
-                                            className="mr-2"
-                                        />
-                                        Thành phẩm
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Left Column */}
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Mã hàng <span className="text-red-500">*</span>
                                     </label>
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            name="type"
-                                            value="NGUYÊN VẬT LIỆU"
-                                            checked={currentItem['LOẠI'] === 'NGUYÊN VẬT LIỆU'}
-                                            onChange={(e) => handleInputChange('LOẠI', e.target.value)}
-                                            className="mr-2"
-                                        />
-                                        Nguyên vật liệu
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Hình ảnh
-                                </label>
-                                <div className="mt-1 flex items-center space-x-4">
-                                    <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
-                                        {selectedImage ? (
-                                            <img
-                                                src={selectedImage}
-                                                alt="Product preview"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <Image className="h-8 w-8 text-gray-300" />
-                                        )}
-                                    </div>
-                                    <label className="cursor-pointer px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors shadow-sm flex items-center">
-                                        <Upload className="h-4 w-4 mr-2" />
-                                        Chọn ảnh
-                                        <input
-                                            type="file"
-                                            className="hidden"
-                                            accept="image/*"
-                                            onChange={handleImageChange}
-                                        />
-                                    </label>
-                                    {selectedImage && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedImage(null);
-                                                handleInputChange('HÌNH ẢNH', '');
-                                            }}
-                                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors shadow-sm"
-                                        >
-                                            Xóa ảnh
-                                        </button>
+                                    <input
+                                        type="text"
+                                        value={currentItem['MÃ HÀNG']}
+                                        onChange={(e) => handleInputChange('MÃ HÀNG', e.target.value)}
+                                        className={`p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500 ${isEditMode ? 'bg-gray-100' : ''}`}
+                                        placeholder="Nhập mã hàng"
+                                        readOnly={isEditMode}
+                                        required
+                                    />
+                                    {isEditMode && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Mã hàng không thể thay đổi sau khi đã tạo.
+                                        </p>
                                     )}
                                 </div>
 
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Hình ảnh nên có kích thước vuông, tối đa 5MB.
-                                </p>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Tên hàng <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentItem['TÊN HÀNG']}
+                                        onChange={(e) => handleInputChange('TÊN HÀNG', e.target.value)}
+                                        className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Nhập tên hàng"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Loại <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="flex space-x-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                        <label className="flex items-center">
+                                            <input
+                                                type="radio"
+                                                name="type"
+                                                value="THÀNH PHẨM"
+                                                checked={currentItem['LOẠI'] === 'THÀNH PHẨM'}
+                                                onChange={(e) => handleInputChange('LOẠI', e.target.value)}
+                                                className="mr-2 h-4 w-4 text-indigo-600"
+                                            />
+                                            <span className="text-gray-800">Thành phẩm</span>
+                                        </label>
+                                        <label className="flex items-center">
+                                            <input
+                                                type="radio"
+                                                name="type"
+                                                value="NGUYÊN VẬT LIỆU"
+                                                checked={currentItem['LOẠI'] === 'NGUYÊN VẬT LIỆU'}
+                                                onChange={(e) => handleInputChange('LOẠI', e.target.value)}
+                                                className="mr-2 h-4 w-4 text-indigo-600"
+                                            />
+                                            <span className="text-gray-800">Nguyên vật liệu</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Quy cách
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentItem['QUY CÁCH']}
+                                        onChange={(e) => handleInputChange('QUY CÁCH', e.target.value)}
+                                        className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Nhập quy cách (nếu có)"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Đơn giá
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={currentItem['ĐƠN GIÁ']}
+                                            onChange={(e) => handleInputChange('ĐƠN GIÁ', e.target.value)}
+                                            className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500 pr-12"
+                                            placeholder="Nhập đơn giá"
+                                        />
+                                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                            <span className="text-gray-500">đ</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Quy cách
-                                </label>
-                                <input
-                                    type="text"
-                                    value={currentItem['QUY CÁCH']}
-                                    onChange={(e) => handleInputChange('QUY CÁCH', e.target.value)}
-                                    className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
-                                    placeholder="Nhập quy cách (nếu có)"
-                                />
-                            </div>
+                            {/* Right Column */}
+                            <div className="space-y-5">
+                                <div className="h-full flex flex-col">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Hình ảnh
+                                    </label>
+                                    <div
+                                        ref={dropZoneRef}
+                                        onDragEnter={handleDragEnter}
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={handleDrop}
+                                        className={`flex-1 p-4 border-2 border-dashed rounded-lg flex flex-col items-center justify-center bg-gray-50 transition-all cursor-pointer hover:bg-gray-100 ${isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'
+                                            }`}
+                                    >
+                                        <div className="w-full flex items-center justify-center mb-3">
+                                            <div className="w-32 h-32 border rounded-lg flex items-center justify-center bg-white overflow-hidden">
+                                                {selectedImage ? (
+                                                    <img
+                                                        src={selectedImage}
+                                                        alt="Product preview"
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <Image className="h-12 w-12 text-gray-300" />
+                                                )}
+                                            </div>
+                                        </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Ghi chú
-                                </label>
-                                <textarea
-                                    value={currentItem['GHI CHÚ']}
-                                    onChange={(e) => handleInputChange('GHI CHÚ', e.target.value)}
-                                    rows={3}
-                                    className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
-                                    placeholder="Nhập ghi chú (nếu có)"
-                                />
-                            </div>
+                                        <div className="text-center">
+                                            <Upload className="h-5 w-5 mx-auto text-gray-400 mb-1" />
+                                            <p className="text-sm text-gray-600 mb-1">
+                                                {isDragging ? 'Thả ảnh vào đây' : 'Kéo và thả ảnh vào đây hoặc'}
+                                            </p>
+                                            <label className="cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors shadow-sm inline-flex items-center">
+                                                <Upload className="h-4 w-4 mr-2" />
+                                                Chọn ảnh
+                                                <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    accept="image/*"
+                                                    onChange={handleImageChange}
+                                                />
+                                            </label>
+                                        </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                                <button
-                                    onClick={handleCloseModal}
-                                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-                                    disabled={isSubmitting}
-                                >
-                                    Hủy
-                                </button>
-                                <button
-                                    onClick={handleSaveItem}
-                                    disabled={isSubmitting}
-                                    className={`px-4 py-2 bg-indigo-600 text-white rounded-lg ${isSubmitting
+                                        <p className="text-xs text-gray-500 mt-3">
+                                            Hình ảnh nên có kích thước vuông, tối đa 5MB.
+                                        </p>
+                                    </div>
+
+                                    {selectedImage && (
+                                        <div className="mt-2 flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedImage(null);
+                                                    handleInputChange('HÌNH ẢNH', '');
+                                                }}
+                                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors shadow-sm flex items-center"
+                                            >
+                                                <X className="h-4 w-4 mr-1" />
+                                                Xóa ảnh
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="mt-auto">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Ghi chú
+                                        </label>
+                                        <textarea
+                                            value={currentItem['GHI CHÚ']}
+                                            onChange={(e) => handleInputChange('GHI CHÚ', e.target.value)}
+                                            rows={4}
+                                            className="p-2.5 border border-gray-300 rounded-lg w-full focus:ring-indigo-500 focus:border-indigo-500"
+                                            placeholder="Nhập ghi chú (nếu có)"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer with buttons */}
+                        <div className="flex justify-end gap-3 pt-5 mt-6 border-t border-gray-200">
+                            <button
+                                onClick={handleCloseModal}
+                                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors shadow-sm flex items-center"
+                                disabled={isSubmitting}
+                            >
+                                <X className="h-4 w-4 mr-1" />
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleSaveItem}
+                                disabled={isSubmitting}
+                                className={`px-5 py-2 bg-indigo-600 text-white rounded-lg ${isSubmitting
                                         ? 'opacity-50 cursor-not-allowed'
-                                        : 'hover:bg-indigo-700'
-                                        } flex items-center gap-2 transition-colors shadow-sm`}
-                                >
-                                    {isSubmitting ? (
-                                        <>
-                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Đang lưu...
-                                        </>
-                                    ) : 'Lưu hàng hóa'}
-                                </button>
-                            </div>
+                                        : 'hover:bg-indigo-700 hover:shadow-md'
+                                    } flex items-center gap-2 transition-all`}
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Đang lưu...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Lưu hàng hóa
+                                    </>
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>

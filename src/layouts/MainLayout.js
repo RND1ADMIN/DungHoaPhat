@@ -6,8 +6,13 @@ import {
     Table,
     Receipt,
     User,
+    FileBox ,
+    Gauge,ChartArea ,
+    LayoutList ,
     Wallet,
     ChevronLeft,
+    ChartPie ,
+    NotebookPen,
     LogOut,
     Menu as MenuIcon,
     X
@@ -21,12 +26,12 @@ const isMobileDevice = () => {
 const MainLayout = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    
+
     // Initialize sidebar state based on screen size - open by default on desktop, closed on mobile
     const [isSidebarOpen, setIsSidebarOpen] = useState(!isMobileDevice());
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(isMobileDevice());
-    
+
     // State để lưu các nút chức năng đặc biệt từ trang con
     const [pageActions, setPageActions] = useState([]);
 
@@ -37,7 +42,7 @@ const MainLayout = ({ children }) => {
         const handleResize = () => {
             const mobile = isMobileDevice();
             setIsMobile(mobile);
-            
+
             // Automatically close sidebar on mobile when resizing
             if (mobile && isSidebarOpen) {
                 setIsSidebarOpen(false);
@@ -56,11 +61,11 @@ const MainLayout = ({ children }) => {
         window.registerPageActions = (actions) => {
             setPageActions(actions);
         };
-        
+
         window.clearPageActions = () => {
             setPageActions([]);
         };
-        
+
         return () => {
             delete window.registerPageActions;
             delete window.clearPageActions;
@@ -80,21 +85,20 @@ const MainLayout = ({ children }) => {
     }, [isProfileMenuOpen]);
 
     const menuItems = [
-        { text: 'Tổng quan', icon: LayoutDashboard, path: '/dashboard' },
-     
-        { text: 'Quản lý người dùng', icon: User, path: '/users' },
-        { text: 'Quản lý hàng hóa', icon: Wallet, path: '/dmhh' },
-        { text: 'Tạo phiếu xuất nhập', icon: Table, path: '/xuatnhapfrom' },
-        { text: 'Quản lý xuất nhập kho', icon: Table, path: '/xuatnhapkho' },
+        { text: 'Tổng quan', icon: Gauge, path: '/dashboard' },
 
-        { text: 'Công đoạn', icon: Receipt, path: '/congdoan' },
-        {
-            text: 'Báo Cáo sản lượng',
-            icon: UtensilsCrossed,
-            path: isMobile ? '/reportMobile' : '/report',
-            isExternal: true,
-            requiresUserParam: true
-        },
+
+
+
+        { text: 'Quản lý xuất nhập kho', icon: Table, path: '/xuatnhapkho' },
+        { text: 'Nhập sản lượng', icon: NotebookPen, path: '/report' },
+        { text: 'Quản lý hàng hóa', icon: FileBox, path: '/dmhh' },
+        { text: 'Danh sách công đoạn', icon: LayoutList, path: '/congdoan' },
+        { text: 'Báo cáo kho', icon: ChartArea, path: '/tonkho' },
+
+        { text: 'Báo cáo sản xuất', icon: ChartPie, path: '/baocaoreport' },
+        { text: 'Quản lý người dùng', icon: User, path: '/users' },
+
         { text: 'Đăng xuất', icon: LogOut, path: '/', isLogout: true }
     ];
 
@@ -115,13 +119,13 @@ const MainLayout = ({ children }) => {
             <div className="flex items-center justify-between px-6 py-4 border-b">
                 <img src="/logo1.png" alt="Logo" className="h-8" />
                 <h1 className="text-xl font-semibold text-gray-800">
-                   DUNG HOA PHAT
+                    DUNG HOA PHAT
                 </h1>
                 <button
                     className="text-gray-500 hover:text-gray-700"
                     onClick={toggleSidebar}
                 >
-                    <X className="h-6 w-6" />
+                   
                 </button>
             </div>
 
@@ -172,9 +176,8 @@ const MainLayout = ({ children }) => {
                                 }
                                 isMobile && setIsSidebarOpen(false);
                             }}
-                            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                                isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
-                            }`}
+                            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
+                                }`}
                         >
                             <Icon className={`h-5 w-5 ${isActive ? 'text-blue-500' : 'text-gray-500'}`} />
                             <span className={`font-medium ${isActive ? 'text-blue-600' : 'text-gray-700'}`}>
@@ -198,7 +201,7 @@ const MainLayout = ({ children }) => {
             )}
 
             {/* Sidebar */}
-            <aside 
+            <aside
                 className={`fixed top-0 left-0 h-full transform transition-transform duration-200 ease-in-out z-50 
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} shadow-lg`}
                 style={{ width: '18rem' }}
@@ -220,13 +223,13 @@ const MainLayout = ({ children }) => {
                             >
                                 {isSidebarOpen ? <ChevronLeft className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
                             </button>
-                            
+
                             {/* Page title based on current route */}
                             <h2 className="text-lg font-medium hidden md:block">
                                 {menuItems.find(item => item.path === location.pathname)?.text || 'Trang chủ'}
                             </h2>
                         </div>
-                        
+
                         {/* Các nút tùy chỉnh từ trang con */}
                         <div className="flex-1 flex justify-center">
                             <div className="flex items-center space-x-2 overflow-x-auto max-w-[90%] px-4">

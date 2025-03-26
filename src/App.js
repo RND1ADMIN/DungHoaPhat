@@ -14,6 +14,9 @@ import DMHHManagement  from './pages/DMHHManagement';
 import XuatNhapKhoManager from './pages/XuatNhapKhoManager';
 import CongDoanManagement from './pages/CongDoan';
 import ReportMobile from './pages/BaoCaoMobie';
+import TonKhoManager from './pages/TonKhoManager';
+import Baocaoreport from './pages/Baocaoreport';
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
@@ -46,6 +49,8 @@ function App() {
                   <Route path="/xuatnhapfrom/:maPhieu" element={<XuatNhapKhoForm />} />
                   <Route path="/dmhh" element={<DMHHManagement />} />
                   <Route path="/xuatnhapkho" element={<XuatNhapKhoManager />} />
+                  <Route path="/tonkho" element={<TonKhoManager />} />
+                  <Route path="/baocaoreport" element={<Baocaoreport />} />
                   
                   <Route path="/congdoan" element={<CongDoanManagement />} />
                   <Route path="/report" element={<ReportManagement />} />

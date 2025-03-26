@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, Search, Save, Trash, FileText, ShoppingCart, Package, ArrowDownCircle, ArrowUpCircle, X, Check, AlertCircle, Grid, List, ArrowLeft } from 'lucide-react';
+import { Plus, Search, Save, Trash, FileText, ShoppingCart, Package, ArrowDownCircle, X, Check, AlertCircle, Grid, ArrowLeft } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import authUtils from '../utils/authUtils';
@@ -86,7 +86,7 @@ const XuatNhapKhoForm = () => {
         try {
             // Tải thông tin phiếu
             const phieuResponse = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {
-                
+
                 Properties: {
                     Selector: `Filter(XUATNHAPKHO, [MÃ PHIẾU] = "${id}" )`
                 }
@@ -372,8 +372,6 @@ const XuatNhapKhoForm = () => {
             setChiTietItems(prev => [...prev, newItem]);
         }
 
-        // Thông báo đã thêm
-        toast.success(`Đã thêm ${product['TÊN HÀNG']} vào phiếu`);
     };
 
     // Update item quantity directly in the table
@@ -420,8 +418,6 @@ const XuatNhapKhoForm = () => {
         }));
     };
 
-    // Handle form submission
-    // Handle form submission
     // Handle form submission
     const handleSubmit = async (finalStatus = 'CONFIRMED') => {
         if (isSubmitting) return;
@@ -1071,7 +1067,7 @@ const XuatNhapKhoForm = () => {
             {/* Toast Container */}
             <ToastContainer
                 position="top-right"
-                autoClose={3000}
+                autoClose={1500}
                 hideProgressBar={false}
                 newestOnTop
                 closeOnClick

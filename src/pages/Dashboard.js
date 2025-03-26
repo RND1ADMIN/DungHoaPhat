@@ -1,558 +1,811 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis,
-    CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+    CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
 } from 'recharts';
 import {
-    Package, Warehouse, Factory, 
-    TrendingUp, AlertTriangle, Loader2, Calendar
+    Package, Warehouse, Factory, TrendingUp, AlertTriangle, Loader2, Calendar,
+    Search, Filter, FileText, Download, Printer, ChevronDown, ChevronUp, ChevronRight,
+    X, ArrowDownCircle, ArrowUpCircle, ShoppingCart, Plus, Edit
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Button } from "../components/ui/button";
-import { DatePicker } from "../components/ui/datepicker";
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import authUtils from '../utils/authUtils';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-const formatQuantity = (value) => {
-    if (value >= 1e6) return (value / 1e6).toFixed(1) + ' triệu';
-    if (value >= 1e3) return (value / 1e3).toFixed(1) + ' nghìn';
-    return value;
-};
+const Dashboard = () => {
+    const navigate = useNavigate();
 
-const StatCardSkeleton = () => (
-    <Card className="animate-pulse">
-        <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                    <div className="h-3 w-20 bg-gray-200 rounded"></div>
-                    <div className="h-6 w-24 bg-gray-300 rounded"></div>
-                    <div className="h-3 w-28 bg-gray-200 rounded"></div>
-                </div>
-                <div className="bg-gray-300 rounded-lg p-2 w-8 h-8"></div>
-            </div>
-        </CardContent>
-    </Card>
-);
-
-const ChartSkeleton = ({ height = "h-72" }) => (
-    <Card>
-        <CardHeader>
-            <div className="h-5 w-36 bg-gray-200 rounded animate-pulse"></div>
-        </CardHeader>
-        <CardContent>
-            <div className={`${height} bg-gray-100 rounded-lg animate-pulse flex items-center justify-center`}>
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-            </div>
-        </CardContent>
-    </Card>
-);
-
-const StatCard = ({ title, value, icon: Icon, color, percentageChange, unit }) => (
-    <Card className="transition-transform duration-200 hover:scale-[1.02]">
-        <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-                <div>
-                    <p className="text-sm text-gray-500 font-medium mb-1">{title}</p>
-                    <h3 className="text-xl font-bold text-gray-800">
-                        {formatQuantity(value)} {unit}
-                    </h3>
-                    {percentageChange !== undefined && (
-                        <p className={`text-xs mt-1 flex items-center ${percentageChange > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            <span className={`mr-1 ${percentageChange > 0 ? 'rotate-0' : 'rotate-180'}`}>↑</span>
-                            {Math.abs(percentageChange)}% so với tháng trước
-                        </p>
-                    )}
-                </div>
-                <div className={`${color} rounded-lg p-2`}>
-                    <Icon className="w-4 h-4 text-white" />
-                </div>
-            </div>
-        </CardContent>
-    </Card>
-);
-
-const InventoryDashboard = () => {
-    const [allData, setAllData] = useState({
-        rawMaterials: [],
-        products: [],
-        inventory: [],
-        production: []
+    // State for dashboard data
+    const [loading, setLoading] = useState(true);
+    const [dashboardData, setDashboardData] = useState({
+        inventorySummary: {},
+        productCategories: [],
+        recentTransactions: [],
+        lowStockItems: [],
+        inventoryValue: [],
+        productionOverview: [],
+        monthlyFinancials: []
     });
+
+    // State for date range filter
     const [dateRange, setDateRange] = useState({
         start: new Date(new Date().setDate(new Date().getDate() - 30)),
         end: new Date()
     });
-    const [chartType, setChartType] = useState('line');
-    const [timeFilter, setTimeFilter] = useState('30d');
-    const [stats, setStats] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [analyticsData, setAnalyticsData] = useState({
-        productionTrend: [],
-        materialUsage: [],
-        inventoryLevels: [],
-        lowStockItems: [],
-    });
 
-    const handleTimeFilterChange = (value) => {
-        setTimeFilter(value);
-        const end = new Date();
-        let start = new Date();
-
-        switch (value) {
-            case '7d':
-                start.setDate(end.getDate() - 7);
-                break;
-            case '30d':
-                start.setDate(end.getDate() - 30);
-                break;
-            case '90d':
-                start.setDate(end.getDate() - 90);
-                break;
-            case '1y':
-                start.setFullYear(end.getFullYear() - 1);
-                break;
-        }
-
-        setDateRange({ start, end });
-    };
-
-    const handleRefresh = async () => {
-        setLoading(true);
-        try {
-            const [rawMaterials, products, inventory, production] = await Promise.all([
-                authUtils.apiRequest('DMHH', 'Find', {}),
-                authUtils.apiRequest('DMHH', 'Find', {}),
-                authUtils.apiRequest('Kho', 'Find', {}),
-                authUtils.apiRequest('BC', 'Find', {})
-            ]);
-            setAllData({ rawMaterials, products, inventory, production });
-        } catch (error) {
-            console.error('Error refreshing data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const processData = () => {
-        try {
-            // Lọc dữ liệu sản xuất theo khoảng thời gian
-            const filteredProduction = allData.production.filter(item => {
-                const itemDate = new Date(item['NGÀY']);
-                return itemDate >= dateRange.start && itemDate <= dateRange.end;
-            });
-
-            // Tính tổng sản lượng
-            const totalProduction = filteredProduction.reduce((sum, item) => 
-                sum + (Number(item.SoLuong) || 0), 0
-            );
-            
-            // Tính số lượng nguyên vật liệu và sản phẩm
-            const totalRawMaterials = allData.rawMaterials.length;
-            const totalProducts = allData.products.length;
-            
-            // Tính tổng số lượng trong kho
-            const totalInventory = allData.inventory.reduce((sum, item) => 
-                sum + (Number(item.SoLuongTon) || 0), 0
-            );
-            
-            // Đếm số mặt hàng sắp hết
-            const lowStockCount = allData.inventory.filter(item => 
-                (Number(item.SoLuongTon) || 0) < (Number(item.MucTonToiThieu) || 10)
-            ).length;
-
-            // Tính % thay đổi sản lượng so với tháng trước
-            const currentMonth = new Date().getMonth();
-            const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-            
-            const currentMonthProduction = allData.production.filter(item => {
-                const date = new Date(item.NgaySanXuat);
-                return date.getMonth() === currentMonth;
-            }).reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
-            
-            const lastMonthProduction = allData.production.filter(item => {
-                const date = new Date(item.NgaySanXuat);
-                return date.getMonth() === lastMonth;
-            }).reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
-            
-            const productionPercentageChange = lastMonthProduction 
-                ? ((currentMonthProduction - lastMonthProduction) / lastMonthProduction) * 100 
-                : 0;
-
-            setStats({
-                totalRawMaterials,
-                totalProducts,
-                totalInventory,
-                totalProduction,
-                lowStockCount,
-                productionPercentageChange: parseFloat(productionPercentageChange.toFixed(1))
-            });
-
-            // Xu hướng sản xuất theo ngày
-            const productionByDate = filteredProduction.reduce((acc, item) => {
-                const date = new Date(item.NgaySanXuat).toLocaleDateString('vi-VN');
-                acc[date] = (acc[date] || 0) + Number(item.SoLuong || 0);
-                return acc;
-            }, {});
-
-            const productionTrend = Object.entries(productionByDate)
-                .map(([date, amount]) => ({
-                    date,
-                    production: amount
-                }))
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            // Thống kê sử dụng nguyên vật liệu
-            const materialUsageData = allData.rawMaterials.map(material => {
-                const usage = filteredProduction.reduce((sum, item) => {
-                    if (item.IDNguyenVatLieu === material.ID) {
-                        return sum + (Number(item.SoLuongSuDung) || 0);
-                    }
-                    return sum;
-                }, 0);
-                
-                return {
-                    name: material.TenNguyenVatLieu,
-                    usage: usage
-                };
-            }).sort((a, b) => b.usage - a.usage).slice(0, 5);
-
-            // Mức tồn kho hiện tại
-            const inventoryLevels = allData.inventory
-                .filter(item => item.SanPhamID)
-                .map(item => {
-                    const product = allData.products.find(p => p.ID === item.SanPhamID);
-                    return {
-                        name: product ? product.TenSanPham : `Sản phẩm #${item.SanPhamID}`,
-                        current: Number(item.SoLuongTon) || 0,
-                        minimum: Number(item.MucTonToiThieu) || 10
-                    };
-                })
-                .sort((a, b) => a.current - a.minimum - (b.current - b.minimum))
-                .slice(0, 5);
-
-            // Mặt hàng sắp hết trong kho
-            const lowStockItems = allData.inventory
-                .filter(item => (Number(item.SoLuongTon) || 0) < (Number(item.MucTonToiThieu) || 10))
-                .map(item => {
-                    const product = allData.products.find(p => p.ID === item.SanPhamID);
-                    return {
-                        name: product ? product.TenSanPham : `Sản phẩm #${item.SanPhamID}`,
-                        current: Number(item.SoLuongTon) || 0,
-                        minimum: Number(item.MucTonToiThieu) || 10,
-                        percentage: Math.round((item.SoLuongTon / item.MucTonToiThieu) * 100)
-                    };
-                })
-                .sort((a, b) => a.current / a.minimum - b.current / b.minimum);
-
-            setAnalyticsData({
-                productionTrend,
-                materialUsage: materialUsageData,
-                inventoryLevels,
-                lowStockItems
-            });
-        } catch (error) {
-            console.error('Error processing data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    // Fetch data for dashboard
+    // Trong Dashboard.jsx
     useEffect(() => {
-        const fetchData = async () => {
+       
+       
+        const fetchDashboardData = async () => {
+            setLoading(true);
             try {
-                if (!allData.rawMaterials.length) {
-                    const [rawMaterials, products, inventory, production] = await Promise.all([
-                        authUtils.apiRequest('NguyenVatLieu', 'Find', {}),
-                        authUtils.apiRequest('SanPham', 'Find', {}),
-                        authUtils.apiRequest('Kho', 'Find', {}),
-                        authUtils.apiRequest('SanLuong', 'Find', {})
-                    ]);
-                    setAllData({ rawMaterials, products, inventory, production });
+                // Thêm log để kiểm tra
+                console.log("Đang tải dữ liệu dashboard...");
+                
+                // Fetch dữ liệu tồn kho
+                const tonKhoData = await authUtils.apiRequest('DMHH', 'Find', {});
+                const phieuData = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {});
+                const chiTietData = await authUtils.apiRequest('XUATNHAPKHO_CHITIET', 'Find', {});
+                const reportData = await authUtils.apiRequest('BC', 'Find', {}); // Thêm dòng này
+                
+                console.log("Dữ liệu tải về:", {
+                    tonKhoData: tonKhoData?.length,
+                    phieuData: phieuData?.length,
+                    chiTietData: chiTietData?.length,
+                    reportData: reportData?.length
+                });
+                
+                // Xử lý dữ liệu
+                if (tonKhoData && phieuData && chiTietData) {
+                    processData(tonKhoData, phieuData, chiTietData, reportData || []);
+                } else {
+                    console.error("Thiếu dữ liệu cần thiết");
+                    toast.error("Không thể tải đủ dữ liệu. Vui lòng thử lại.");
                 }
-                processData();
             } catch (error) {
-                console.error('Error fetching data:', error);
+                console.error('Lỗi khi tải dữ liệu dashboard:', error);
+                toast.error('Không thể tải dữ liệu. Vui lòng thử lại.');
+            } finally {
                 setLoading(false);
             }
         };
 
-        fetchData();
-    }, [dateRange, allData]);
+        fetchDashboardData();
+    }, [dateRange]);
+    // Thêm hàm này vào Dashboard.jsx (sao chép từ TonKhoManagerPC)
+    const tinhToanTonKhoDashboard = (tonKhoData, phieuList, chiTietList) => {
+        // Tạo đối tượng lưu trữ thông tin tồn kho theo mã hàng
+        const tonKhoMap = {};
 
-    const resetFilters = () => {
-        setDateRange({
-            start: new Date(new Date().setDate(new Date().getDate() - 30)),
-            end: new Date()
+        // Khởi tạo dữ liệu tồn kho từ danh sách hàng hóa
+        tonKhoData.forEach(item => {
+            tonKhoMap[item['MÃ HÀNG']] = {
+                'MÃ HÀNG': item['MÃ HÀNG'],
+                'TÊN HÀNG': item['TÊN HÀNG'],
+                'LOẠI': item['LOẠI'],
+                'ĐƠN VỊ TÍNH': item['ĐƠN VỊ TÍNH'],
+                'ĐƠN GIÁ': item['ĐƠN GIÁ'],
+                'TỒN ĐẦU KỲ': 0,
+                'NHẬP TRONG KỲ': 0,
+                'XUẤT TRONG KỲ': 0,
+                'TỒN CUỐI KỲ': 0,
+                'GIÁ TRỊ TỒN KHO': 0
+            };
         });
-        setTimeFilter('30d');
+
+        // Lấy mốc thời gian
+        const tuNgay = new Date(dateRange.start);
+        tuNgay.setHours(0, 0, 0, 0);
+
+        const denNgay = new Date(dateRange.end);
+        denNgay.setHours(23, 59, 59, 999);
+
+        // Xử lý dữ liệu giao dịch
+        phieuList.forEach(phieu => {
+            const ngayGD = new Date(phieu['NGÀY GD']);
+            const maPhieu = phieu['MÃ PHIẾU'];
+            const loaiPhieu = phieu['LOẠI PHIẾU'];
+
+            const chiTietPhieu = chiTietList.filter(item => item['MÃ PHIẾU'] === maPhieu);
+
+            chiTietPhieu.forEach(chiTiet => {
+                const maHang = chiTiet['MÃ HÀNG'];
+                const soLuong = parseFloat(chiTiet['SỐ LƯỢNG']) || 0;
+
+                if (tonKhoMap[maHang]) {
+                    // Nếu giao dịch trước kỳ báo cáo, tính vào tồn đầu kỳ
+                    if (ngayGD < tuNgay) {
+                        if (loaiPhieu === 'NHẬP KHO') {
+                            tonKhoMap[maHang]['TỒN ĐẦU KỲ'] += soLuong;
+                        } else if (loaiPhieu === 'XUẤT KHO') {
+                            tonKhoMap[maHang]['TỒN ĐẦU KỲ'] -= soLuong;
+                        }
+                    }
+                    // Nếu giao dịch trong kỳ báo cáo, tính vào nhập/xuất trong kỳ
+                    else if (ngayGD >= tuNgay && ngayGD <= denNgay) {
+                        if (loaiPhieu === 'NHẬP KHO') {
+                            tonKhoMap[maHang]['NHẬP TRONG KỲ'] += soLuong;
+                        } else if (loaiPhieu === 'XUẤT KHO') {
+                            tonKhoMap[maHang]['XUẤT TRONG KỲ'] += soLuong;
+                        }
+                    }
+                }
+            });
+        });
+
+        // Tính toán tồn cuối kỳ và giá trị tồn kho
+        Object.values(tonKhoMap).forEach(item => {
+            item['TỒN CUỐI KỲ'] = item['TỒN ĐẦU KỲ'] + item['NHẬP TRONG KỲ'] - item['XUẤT TRONG KỲ'];
+            item['GIÁ TRỊ TỒN KHO'] = item['TỒN CUỐI KỲ'] * item['ĐƠN GIÁ'];
+        });
+
+        // Log để debug
+        console.log("Kết quả tính tồn kho:", Object.values(tonKhoMap));
+        return Object.values(tonKhoMap);
     };
 
-    const statCards = [
-        {
-            title: 'Nguyên vật liệu',
-            value: stats?.totalRawMaterials || 0,
-            icon: Package,
-            color: 'bg-blue-500',
-            unit: 'loại'
-        },
-        {
-            title: 'Sản phẩm',
-            value: stats?.totalProducts || 0,
-            icon: Factory,
-            color: 'bg-green-500',
-            unit: 'loại'
-        },
-        {
-            title: 'Tổng tồn kho',
-            value: stats?.totalInventory || 0,
-            icon: Warehouse,
-            color: 'bg-orange-500',
-            unit: 'đơn vị'
-        },
-        {
-            title: 'Tổng sản lượng',
-            value: stats?.totalProduction || 0,
-            icon: TrendingUp,
-            color: 'bg-red-500',
-            unit: 'đơn vị',
-            percentageChange: stats?.productionPercentageChange
-        },
-        {
-            title: 'Sắp hết hàng',
-            value: stats?.lowStockCount || 0,
-            icon: AlertTriangle,
-            color: 'bg-yellow-500',
-            unit: 'mặt hàng'
+    const processData = (tonKhoData, phieuData, chiTietData, reportData = []) => {
+        try {
+            // Tính toán tồn kho sử dụng cùng phương pháp với TonKhoManagerPC
+            const processedTonKhoData = tinhToanTonKhoDashboard(tonKhoData, phieuData, chiTietData);
+            
+            // Tính tổng giá trị tồn kho từ dữ liệu đã được xử lý
+            const totalInventoryValue = processedTonKhoData.reduce((sum, item) => {
+                return sum + item['GIÁ TRỊ TỒN KHO'];
+            }, 0);
+            
+            console.log("Tổng giá trị tồn kho:", totalInventoryValue);
+            
+            // Tính các giá trị khác từ dữ liệu đã xử lý
+            const totalProducts = processedTonKhoData.length;
+            const rawMaterials = processedTonKhoData.filter(item => item['LOẠI'] === 'NGUYÊN VẬT LIỆU').length;
+            const finishedProducts = processedTonKhoData.filter(item => item['LOẠI'] === 'THÀNH PHẨM').length;
+            
+            // Find low stock items từ dữ liệu đã xử lý
+            const lowStockItems = processedTonKhoData
+                .filter(item => parseFloat(item['TỒN CUỐI KỲ'] || 0) < 10)
+                .sort((a, b) => parseFloat(a['TỒN CUỐI KỲ'] || 0) - parseFloat(b['TỒN CUỐI KỲ'] || 0))
+                .slice(0, 5);
+    
+            // Calculate inventory value by category từ dữ liệu đã xử lý
+            const inventoryByCategory = processedTonKhoData.reduce((acc, item) => {
+                const category = item['LOẠI'] || 'Khác';
+                const value = item['GIÁ TRỊ TỒN KHO'] || 0;
+    
+                if (!acc[category]) {
+                    acc[category] = 0;
+                }
+    
+                acc[category] += value;
+                return acc;
+            }, {});
+    
+            // Format data for pie chart
+            const inventoryValue = Object.keys(inventoryByCategory).map(key => ({
+                name: key,
+                value: inventoryByCategory[key]
+            }));
+    
+            // Filter transactions by date range
+            const startDate = new Date(dateRange.start);
+            const endDate = new Date(dateRange.end);
+            
+            const filteredPhieu = phieuData.filter(phieu => {
+                const phieuDate = new Date(phieu['NGÀY GD']);
+                return phieuDate >= startDate && phieuDate <= endDate;
+            });
+    
+            // Get recent transactions
+            const recentTransactions = filteredPhieu
+                .sort((a, b) => new Date(b['NGÀY GD']) - new Date(a['NGÀY GD']))
+                .slice(0, 5);
+    
+            // Create product categories data
+            const productCategories = [
+                { name: 'Nguyên vật liệu', value: rawMaterials },
+                { name: 'Thành phẩm', value: finishedProducts }
+            ];
+    
+            // Group transactions by month for financial chart
+            const monthlyData = filteredPhieu.reduce((acc, phieu) => {
+                const date = new Date(phieu['NGÀY GD']);
+                const monthYear = `${date.getMonth() + 1}/${date.getFullYear()}`;
+    
+                if (!acc[monthYear]) {
+                    acc[monthYear] = {
+                        month: monthYear,
+                        nhapKho: 0,
+                        xuatKho: 0
+                    };
+                }
+    
+                const tongTien = parseFloat(phieu['TỔNG TIỀN'] || 0);
+    
+                if (phieu['LOẠI PHIẾU'] === 'NHẬP KHO') {
+                    acc[monthYear].nhapKho += tongTien;
+                } else if (phieu['LOẠI PHIẾU'] === 'XUẤT KHO') {
+                    acc[monthYear].xuatKho += tongTien;
+                }
+    
+                return acc;
+            }, {});
+    
+            // Convert to array and sort by date
+            const monthlyFinancials = Object.values(monthlyData)
+                .sort((a, b) => {
+                    const [aMonth, aYear] = a.month.split('/').map(Number);
+                    const [bMonth, bYear] = b.month.split('/').map(Number);
+    
+                    if (aYear !== bYear) return aYear - bYear;
+                    return aMonth - bMonth;
+                });
+    
+            // Calculate production overview from reports
+            const productionOverview = Array.isArray(reportData) ? reportData
+                .filter(report => report['TRẠNG THÁI'] === 'Đã duyệt')
+                .reduce((acc, report) => {
+                    const congDoan = report['CÔNG ĐOẠN'];
+    
+                    if (!acc[congDoan]) {
+                        acc[congDoan] = {
+                            name: congDoan,
+                            volume: 0
+                        };
+                    }
+    
+                    acc[congDoan].volume += parseFloat(report['KHỐI LƯỢNG'] || 0);
+                    return acc;
+                }, {}) : {};
+    
+            // Update dashboard data
+            setDashboardData({
+                inventorySummary: {
+                    totalProducts,
+                    rawMaterials,
+                    finishedProducts,
+                    totalValue: totalInventoryValue
+                },
+                productCategories,
+                recentTransactions,
+                lowStockItems,
+                inventoryValue,
+                productionOverview: Object.values(productionOverview).sort((a, b) => b.volume - a.volume).slice(0, 5),
+                monthlyFinancials
+            });
+            
+            console.log("Dashboard data updated:", {
+                totalProducts,
+                totalValue: totalInventoryValue,
+                lowStockItems: lowStockItems.length,
+                recentTransactions: recentTransactions.length
+            });
+        } catch (error) {
+            console.error('Error processing dashboard data:', error);
+            toast.error('Không thể xử lý dữ liệu tổng quan. Vui lòng thử lại.');
         }
-    ];
+    };
+
+    const handleTimeFilterChange = (days) => {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - days);
+
+        setDateRange({ start, end });
+    };
+
+    // Format currency
+    const formatCurrency = (value) => {
+        return value.toLocaleString('vi-VN') + ' đ';
+    };
+
+    // Shortcut navigation handlers
+    const navigateToInventory = () => navigate('/tonkho');
+    const navigateToTransactions = () => navigate('/xuatnhapkho');
+    const navigateToProducts = () => navigate('/dmhh');
+    const navigateToReports = () => navigate('/reports');
 
     return (
-        <div className="p-4 bg-gray-50 min-h-screen">
-            <div className="mx-auto space-y-4">
-                <div className="bg-white p-6 rounded-lg shadow-lg">
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            Báo Cáo Kho & Sản Xuất
-                        </h1>
-
-                        <div className="flex flex-wrap items-center gap-4">
-                            <Button variant="outline" onClick={handleRefresh}>
-                                <Loader2 className="w-4 h-4 mr-2" />
-                                Làm mới
-                            </Button>
-
-                            <Button variant="outline" onClick={resetFilters}>
-                                Reset
-                            </Button>
-
-                            <Select value={timeFilter} onValueChange={handleTimeFilterChange}>
-                                <SelectTrigger className="w-44">
-                                    <Calendar className="w-4 h-4 mr-2" />
-                                    <SelectValue placeholder="Chọn thời gian" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="7d">7 ngày qua</SelectItem>
-                                    <SelectItem value="30d">30 ngày qua</SelectItem>
-                                    <SelectItem value="90d">90 ngày qua</SelectItem>
-                                    <SelectItem value="1y">1 năm qua</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <div className="flex gap-4">
-                                <DatePicker
-                                    selected={dateRange.start}
-                                    onChange={(date) => setDateRange(prev => ({ ...prev, start: date }))}
-                                    className="w-36"
-                                    placeholderText="Từ ngày"
-                                />
-                                <DatePicker
-                                    selected={dateRange.end}
-                                    onChange={(date) => setDateRange(prev => ({ ...prev, end: date }))}
-                                    className="w-36"
-                                    placeholderText="Đến ngày"
-                                />
+        <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+            <div className="mx-auto">
+                {/* Header */}
+                <div className="bg-white rounded-xl shadow-sm p-5 mb-6 border border-gray-100">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <Warehouse className="h-8 w-8 text-indigo-600" />
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-800">
+                                    Tổng quan hệ thống quản lý kho
+                                </h1>
+                                <p className="text-gray-500">
+                                    Xem báo cáo tổng quan từ {dateRange.start.toLocaleDateString('vi-VN')} đến {dateRange.end.toLocaleDateString('vi-VN')}
+                                </p>
                             </div>
+                        </div>
+
+                        <div className="flex gap-2 mt-4 md:mt-0">
+                            <button
+                                onClick={() => handleTimeFilterChange(7)}
+                                className={`px-3 py-1.5 rounded-lg text-sm ${dateRange.end.getDate() - dateRange.start.getDate() === 7
+                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                    : 'bg-white text-gray-700 border border-gray-300'
+                                    }`}
+                            >
+                                7 ngày
+                            </button>
+                            <button
+                                onClick={() => handleTimeFilterChange(30)}
+                                className={`px-3 py-1.5 rounded-lg text-sm ${dateRange.end.getDate() - dateRange.start.getDate() === 30
+                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                    : 'bg-white text-gray-700 border border-gray-300'
+                                    }`}
+                            >
+                                30 ngày
+                            </button>
+                            <button
+                                onClick={() => handleTimeFilterChange(90)}
+                                className={`px-3 py-1.5 rounded-lg text-sm ${dateRange.end.getDate() - dateRange.start.getDate() === 90
+                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                    : 'bg-white text-gray-700 border border-gray-300'
+                                    }`}
+                            >
+                                90 ngày
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-4 border border-indigo-200 shadow-sm transition-transform duration-200 hover:shadow-md hover:scale-[1.02]">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-indigo-600 font-medium">Tồn kho hiện tại</p>
+                                    <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                                        {loading ? '...' : formatCurrency(dashboardData.inventorySummary.totalValue)}
+                                    </h3>
+                                    <p className="text-xs text-indigo-500 mt-1">
+                                        {loading ? '...' : `${dashboardData.inventorySummary.totalProducts} mặt hàng`}
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 bg-indigo-200 rounded-full flex items-center justify-center">
+                                    <Warehouse className="h-6 w-6 text-indigo-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 shadow-sm transition-transform duration-200 hover:shadow-md hover:scale-[1.02]">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-green-600 font-medium">Giao dịch nhập/xuất</p>
+                                    <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                                        {loading ? '...' : dashboardData.recentTransactions.length}
+                                    </h3>
+                                    <p className="text-xs text-green-500 mt-1">
+                                        Trong {(dateRange.end - dateRange.start) / (1000 * 60 * 60 * 24)} ngày qua
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 bg-green-200 rounded-full flex items-center justify-center">
+                                    <ShoppingCart className="h-6 w-6 text-green-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200 shadow-sm transition-transform duration-200 hover:shadow-md hover:scale-[1.02]">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-amber-600 font-medium">Nguyên vật liệu</p>
+                                    <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                                        {loading ? '...' : dashboardData.inventorySummary.rawMaterials}
+                                    </h3>
+                                    <p className="text-xs text-amber-500 mt-1">
+                                        Loại nguyên vật liệu
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 bg-amber-200 rounded-full flex items-center justify-center">
+                                    <Package className="h-6 w-6 text-amber-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200 shadow-sm transition-transform duration-200 hover:shadow-md hover:scale-[1.02]">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-red-600 font-medium">Cảnh báo kho</p>
+                                    <h3 className="text-2xl font-bold text-gray-800 mt-1">
+                                        {loading ? '...' : dashboardData.lowStockItems.length}
+                                    </h3>
+                                    <p className="text-xs text-red-500 mt-1">
+                                        Mặt hàng sắp hết
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 bg-red-200 rounded-full flex items-center justify-center">
+                                    <AlertTriangle className="h-6 w-6 text-red-600" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="mt-6 flex flex-wrap gap-2">
+                        <button
+                            onClick={navigateToInventory}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition-colors"
+                        >
+                            <Warehouse className="h-4 w-4" />
+                            Quản lý tồn kho
+                        </button>
+                        <button
+                            onClick={navigateToTransactions}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors"
+                        >
+                            <ShoppingCart className="h-4 w-4" />
+                            Nhập xuất kho
+                        </button>
+                        <button
+                            onClick={navigateToProducts}
+                            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 flex items-center gap-2 transition-colors"
+                        >
+                            <Package className="h-4 w-4" />
+                            Danh mục hàng hóa
+                        </button>
+                        <button
+                            onClick={navigateToReports}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                        >
+                            <FileText className="h-4 w-4" />
+                            Báo cáo sản xuất
+                        </button>
+                    </div>
+                </div>
+
+                {/* Charts Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    {/* Chart 1: Inventory Value by Category */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Giá trị tồn kho theo loại</h2>
+                        <div className="h-72">
+                            {loading ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={dashboardData.inventoryValue}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            outerRadius={80}
+                                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                        >
+                                            {dashboardData.inventoryValue.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(value) => formatCurrency(value)}
+                                        />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Chart 2: Monthly Financials */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Giá trị nhập xuất theo tháng</h2>
+                        <div className="h-72">
+                            {loading ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={dashboardData.monthlyFinancials}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="month" />
+                                        <YAxis />
+                                        <Tooltip formatter={(value) => formatCurrency(value)} />
+                                        <Legend />
+                                        <Bar dataKey="nhapKho" name="Nhập kho" fill="#0088FE" />
+                                        <Bar dataKey="xuatKho" name="Xuất kho" fill="#00C49F" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Chart 3: Production by Stage */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Sản lượng theo công đoạn</h2>
+                        <div className="h-72">
+                            {loading ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={dashboardData.productionOverview}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        <Bar dataKey="volume" name="Sản lượng" fill="#8884d8">
+                                            {dashboardData.productionOverview.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Chart 4: Product Categories */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">Phân loại hàng hóa</h2>
+                        <div className="h-72">
+                            {loading ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={dashboardData.productCategories}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            outerRadius={80}
+                                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                        >
+                                            {dashboardData.productCategories.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                    {loading
-                        ? Array(5).fill(0).map((_, i) => <StatCardSkeleton key={i} />)
-                        : statCards.map((stat, index) => <StatCard key={index} {...stat} />)
-                    }
-                </div>
+                {/* Tables Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Recent Transactions */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-gray-800">Giao dịch gần đây</h2>
+                            <button
+                                onClick={navigateToTransactions}
+                                className="text-indigo-600 hover:text-indigo-800 text-sm flex items-center gap-1"
+                            >
+                                Xem tất cả <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {loading ? (
-                        <>
-                            <ChartSkeleton height="h-72" />
-                            <ChartSkeleton height="h-72" />
-                            <ChartSkeleton height="h-72" />
-                        </>
-                    ) : (
-                        <>
-                            <Card className="lg:col-span-2">
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-base font-semibold">
-                                        Xu hướng sản lượng
-                                    </CardTitle>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant={chartType === 'line' ? 'default' : 'outline'}
-                                            size="sm"
-                                            onClick={() => setChartType('line')}
-                                        >
-                                            Line
-                                        </Button>
-                                        <Button
-                                            variant={chartType === 'bar' ? 'default' : 'outline'}
-                                            size="sm"
-                                            onClick={() => setChartType('bar')}
-                                        >
-                                            Bar
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-72">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            {chartType === 'line' ? (
-                                                <LineChart data={analyticsData.productionTrend}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="date" />
-                                                    <YAxis />
-                                                    <Tooltip />
-                                                    <Legend />
-                                                    <Line
-                                                        type="monotone"
-                                                        dataKey="production"
-                                                        stroke="#0088FE"
-                                                        name="Sản lượng"
-                                                    />
-                                                </LineChart>
-                                            ) : (
-                                                <BarChart data={analyticsData.productionTrend}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="date" />
-                                                    <YAxis />
-                                                    <Tooltip />
-                                                    <Legend />
-                                                    <Bar dataKey="production" fill="#0088FE" name="Sản lượng" />
-                                                </BarChart>
-                                            )}
-                                        </ResponsiveContainer>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base font-semibold">
-                                        Top 5 nguyên vật liệu sử dụng nhiều nhất
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-72">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={analyticsData.materialUsage}>
-                                                <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis dataKey="name" />
-                                                <YAxis />
-                                                <Tooltip />
-                                                <Bar dataKey="usage" fill="#00C49F" name="Lượng sử dụng" />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base font-semibold">
-                                        Mức tồn kho hiện tại
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-72">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart 
-                                                data={analyticsData.inventoryLevels}
-                                                layout="vertical"
-                                                margin={{ left: 100 }}
-                                            >
-                                                <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis type="number" />
-                                                <YAxis dataKey="name" type="category" width={100} />
-                                                <Tooltip />
-                                                <Legend />
-                                                <Bar dataKey="current" fill="#0088FE" name="Tồn kho hiện tại" />
-                                                <Bar dataKey="minimum" fill="#FF8042" name="Mức tồn tối thiểu" />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </>
-                    )}
-                </div>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base font-semibold">
-                            Cảnh báo hàng sắp hết
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead>
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
                                     <tr>
-                                        <th className="pb-2 font-medium text-gray-500">Sản phẩm</th>
-                                        <th className="pb-2 font-medium text-gray-500">Tồn kho</th>
-                                        <th className="pb-2 font-medium text-gray-500">Mức tối thiểu</th>
-                                        <th className="pb-2 font-medium text-gray-500">Trạng thái</th>
+                                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Mã phiếu
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Loại
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Ngày GD
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Giá trị
+                                        </th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    {analyticsData.lowStockItems.map((item, index) => (
-                                        <tr key={index} className="border-t border-gray-100">
-                                            <td className="py-3">{item.name}</td>
-                                            <td className="py-3">{item.current}</td>
-                                            <td className="py-3">{item.minimum}</td>
-                                            <td className="py-3">
-                                                <div className="flex items-center">
-                                                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
-                                                        <div
-                                                            className={`h-2.5 rounded-full ${
-                                                                item.percentage < 30 ? 'bg-red-500' : 
-                                                                item.percentage < 70 ? 'bg-yellow-500' : 'bg-green-500'
-                                                            }`}
-                                                            style={{ width: `${item.percentage}%` }}
-                                                        ></div>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {loading ? (
+                                        Array(5).fill(0).map((_, index) => (
+                                            <tr key={index} className="animate-pulse">
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="h-4 bg-gray-200 rounded w-16"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                    <div className="h-4 bg-gray-200 rounded w-16 ml-auto"></div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : dashboardData.recentTransactions.length > 0 ? (
+                                        dashboardData.recentTransactions.map((transaction) => (
+                                            <tr key={transaction['MÃ PHIẾU']} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-indigo-600">
+                                                    {transaction['MÃ PHIẾU']}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                                    <div className="flex items-center">
+                                                        {transaction['LOẠI PHIẾU'] === 'NHẬP KHO' ? (
+                                                            <ArrowDownCircle className="h-4 w-4 text-green-500 mr-1" />
+                                                        ) : (
+                                                            <ArrowUpCircle className="h-4 w-4 text-red-500 mr-1" />
+                                                        )}
+                                                        {transaction['LOẠI PHIẾU']}
                                                     </div>
-                                                    <span 
-                                                        className={`text-xs font-medium ${
-                                                            item.percentage < 30 ? 'text-red-500' : 
-                                                            item.percentage < 70 ? 'text-yellow-500' : 'text-green-500'
-                                                        }`}
-                                                    >
-                                                        {item.percentage}%
-                                                    </span>
-                                                </div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                    {new Date(transaction['NGÀY GD']).toLocaleDateString('vi-VN')}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium">
+                                                    {formatCurrency(parseFloat(transaction['TỔNG TIỀN'] || 0))}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="4" className="px-4 py-3 text-center text-sm text-gray-500">
+                                                Không có giao dịch nào trong khoảng thời gian này
                                             </td>
                                         </tr>
-                                    ))}
+                                    )}
                                 </tbody>
                             </table>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+
+                    {/* Low Stock Items */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-gray-800">Mặt hàng sắp hết</h2>
+                            <button
+                                onClick={navigateToInventory}
+                                className="text-indigo-600 hover:text-indigo-800 text-sm flex items-center gap-1"
+                            >
+                                Xem tất cả <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Mã hàng
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Tên hàng
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Tồn kho
+                                        </th>
+                                        <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Giá trị
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {loading ? (
+                                        Array(5).fill(0).map((_, index) => (
+                                            <tr key={index} className="animate-pulse">
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    <div className="h-4 bg-gray-200 rounded w-32"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                    <div className="h-4 bg-gray-200 rounded w-12 ml-auto"></div>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                    <div className="h-4 bg-gray-200 rounded w-16 ml-auto"></div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : dashboardData.lowStockItems.length > 0 ? (
+                                        dashboardData.lowStockItems.map((item) => (
+                                            <tr key={item['MÃ HÀNG']} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-indigo-600">
+                                                    {item['MÃ HÀNG']}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                                    {item['TÊN HÀNG']}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                                                    <span className="font-medium text-red-600">
+                                                        {parseFloat(item['TỒN CUỐI KỲ'] || 0).toLocaleString('vi-VN')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium">
+                                                    {formatCurrency(parseFloat(item['TỒN CUỐI KỲ'] || 0) * parseFloat(item['ĐƠN GIÁ'] || 0))}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="4" className="px-4 py-3 text-center text-sm text-gray-500">
+                                                Không có mặt hàng nào sắp hết
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Performance Metrics */}
+                <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 mt-6">
+                    <h2 className="text-lg font-bold text-gray-800 mb-4">Hiệu suất sản xuất theo thời gian</h2>
+                    <div className="h-80">
+                        {loading ? (
+                            <div className="h-full flex items-center justify-center">
+                                <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                            </div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart
+                                    data={dashboardData.monthlyFinancials}
+                                    margin={{
+                                        top: 5,
+                                        right: 30,
+                                        left: 20,
+                                        bottom: 5,
+                                    }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="month" />
+                                    <YAxis />
+                                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                                    <Legend />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="nhapKho"
+                                        name="Giá trị nhập kho"
+                                        stroke="#8884d8"
+                                        activeDot={{ r: 8 }}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="xuatKho"
+                                        name="Giá trị xuất kho"
+                                        stroke="#82ca9d"
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+                </div>
             </div>
+
+            {/* Toast notifications */}
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+            />
         </div>
     );
 };
 
-export default InventoryDashboard;
+export default Dashboard;
