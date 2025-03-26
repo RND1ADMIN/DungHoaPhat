@@ -77,7 +77,7 @@ const ProductionReportStats = () => {
     congDoan: '',
     trangThai: 'Đã duyệt' // Default to show only approved reports
   });
-
+  
   // Fetch data on component mount
   useEffect(() => {
     fetchData();

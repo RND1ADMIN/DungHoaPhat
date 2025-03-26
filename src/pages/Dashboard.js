@@ -35,37 +35,58 @@ const Dashboard = () => {
         start: new Date(new Date().setDate(new Date().getDate() - 30)),
         end: new Date()
     });
-
+    const [rawData, setRawData] = useState({
+        phieuList: [],
+        chiTietList: [],
+        hangHoaList: [],
+        reportData: []
+    });
     // Fetch data for dashboard
     // Trong Dashboard.jsx
     useEffect(() => {
-       
-       
         const fetchDashboardData = async () => {
             setLoading(true);
             try {
-                // Thêm log để kiểm tra
                 console.log("Đang tải dữ liệu dashboard...");
-                
-                // Fetch dữ liệu tồn kho
-                const tonKhoData = await authUtils.apiRequest('DMHH', 'Find', {});
-                const phieuData = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {});
-                const chiTietData = await authUtils.apiRequest('XUATNHAPKHO_CHITIET', 'Find', {});
-                const reportData = await authUtils.apiRequest('BC', 'Find', {}); // Thêm dòng này
-                
-                console.log("Dữ liệu tải về:", {
-                    tonKhoData: tonKhoData?.length,
-                    phieuData: phieuData?.length,
-                    chiTietData: chiTietData?.length,
-                    reportData: reportData?.length
-                });
-                
-                // Xử lý dữ liệu
-                if (tonKhoData && phieuData && chiTietData) {
-                    processData(tonKhoData, phieuData, chiTietData, reportData || []);
+
+                // Chỉ tải dữ liệu khi rawData chưa có
+                if (rawData.phieuList.length === 0) {
+                    // Fetch dữ liệu tồn kho
+                    const tonKhoData = await authUtils.apiRequest('DMHH', 'Find', {});
+                    const phieuData = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {});
+                    const chiTietData = await authUtils.apiRequest('XUATNHAPKHO_CHITIET', 'Find', {});
+                    const reportData = await authUtils.apiRequest('BC', 'Find', {});
+
+                    console.log("Dữ liệu tải về:", {
+                        tonKhoData: tonKhoData?.length,
+                        phieuData: phieuData?.length,
+                        chiTietData: chiTietData?.length,
+                        reportData: reportData?.length
+                    });
+
+                    // Lưu dữ liệu gốc
+                    setRawData({
+                        phieuList: phieuData || [],
+                        chiTietList: chiTietData || [],
+                        hangHoaList: tonKhoData || [],
+                        reportData: reportData || []
+                    });
+
+                    // Xử lý dữ liệu
+                    if (tonKhoData && phieuData && chiTietData) {
+                        processData(tonKhoData, phieuData, chiTietData, reportData || []);
+                    } else {
+                        console.error("Thiếu dữ liệu cần thiết");
+                        toast.error("Không thể tải đủ dữ liệu. Vui lòng thử lại.");
+                    }
                 } else {
-                    console.error("Thiếu dữ liệu cần thiết");
-                    toast.error("Không thể tải đủ dữ liệu. Vui lòng thử lại.");
+                    // Nếu đã có dữ liệu, chỉ xử lý lại dữ liệu với bộ lọc ngày mới
+                    processData(
+                        rawData.hangHoaList,
+                        rawData.phieuList,
+                        rawData.chiTietList,
+                        rawData.reportData
+                    );
                 }
             } catch (error) {
                 console.error('Lỗi khi tải dữ liệu dashboard:', error);
@@ -76,7 +97,7 @@ const Dashboard = () => {
         };
 
         fetchDashboardData();
-    }, [dateRange]);
+    }, [dateRange, rawData]);
     // Thêm hàm này vào Dashboard.jsx (sao chép từ TonKhoManagerPC)
     const tinhToanTonKhoDashboard = (tonKhoData, phieuList, chiTietList) => {
         // Tạo đối tượng lưu trữ thông tin tồn kho theo mã hàng
@@ -153,69 +174,72 @@ const Dashboard = () => {
         try {
             // Tính toán tồn kho sử dụng cùng phương pháp với TonKhoManagerPC
             const processedTonKhoData = tinhToanTonKhoDashboard(tonKhoData, phieuData, chiTietData);
-            
+
+            // Filter transactions by date range
+            const startDate = new Date(dateRange.start);
+            const endDate = new Date(dateRange.end);
+
+            const filteredPhieu = phieuData.filter(phieu => {
+                const phieuDate = new Date(phieu['NGÀY GD']);
+                return phieuDate >= startDate && phieuDate <= endDate;
+            });
+
             // Tính tổng giá trị tồn kho từ dữ liệu đã được xử lý
             const totalInventoryValue = processedTonKhoData.reduce((sum, item) => {
                 return sum + item['GIÁ TRỊ TỒN KHO'];
             }, 0);
-            
+
             console.log("Tổng giá trị tồn kho:", totalInventoryValue);
-            
+
             // Tính các giá trị khác từ dữ liệu đã xử lý
             const totalProducts = processedTonKhoData.length;
             const rawMaterials = processedTonKhoData.filter(item => item['LOẠI'] === 'NGUYÊN VẬT LIỆU').length;
             const finishedProducts = processedTonKhoData.filter(item => item['LOẠI'] === 'THÀNH PHẨM').length;
-            
+
             // Find low stock items từ dữ liệu đã xử lý
             const lowStockItems = processedTonKhoData
                 .filter(item => parseFloat(item['TỒN CUỐI KỲ'] || 0) < 10)
                 .sort((a, b) => parseFloat(a['TỒN CUỐI KỲ'] || 0) - parseFloat(b['TỒN CUỐI KỲ'] || 0))
                 .slice(0, 5);
-    
+
             // Calculate inventory value by category từ dữ liệu đã xử lý
             const inventoryByCategory = processedTonKhoData.reduce((acc, item) => {
                 const category = item['LOẠI'] || 'Khác';
                 const value = item['GIÁ TRỊ TỒN KHO'] || 0;
-    
+
                 if (!acc[category]) {
                     acc[category] = 0;
                 }
-    
+
                 acc[category] += value;
                 return acc;
             }, {});
-    
+
             // Format data for pie chart
             const inventoryValue = Object.keys(inventoryByCategory).map(key => ({
                 name: key,
                 value: inventoryByCategory[key]
             }));
-    
+
             // Filter transactions by date range
-            const startDate = new Date(dateRange.start);
-            const endDate = new Date(dateRange.end);
-            
-            const filteredPhieu = phieuData.filter(phieu => {
-                const phieuDate = new Date(phieu['NGÀY GD']);
-                return phieuDate >= startDate && phieuDate <= endDate;
-            });
-    
+
+
             // Get recent transactions
             const recentTransactions = filteredPhieu
                 .sort((a, b) => new Date(b['NGÀY GD']) - new Date(a['NGÀY GD']))
                 .slice(0, 5);
-    
+
             // Create product categories data
             const productCategories = [
                 { name: 'Nguyên vật liệu', value: rawMaterials },
                 { name: 'Thành phẩm', value: finishedProducts }
             ];
-    
+
             // Group transactions by month for financial chart
             const monthlyData = filteredPhieu.reduce((acc, phieu) => {
                 const date = new Date(phieu['NGÀY GD']);
                 const monthYear = `${date.getMonth() + 1}/${date.getFullYear()}`;
-    
+
                 if (!acc[monthYear]) {
                     acc[monthYear] = {
                         month: monthYear,
@@ -223,45 +247,45 @@ const Dashboard = () => {
                         xuatKho: 0
                     };
                 }
-    
+
                 const tongTien = parseFloat(phieu['TỔNG TIỀN'] || 0);
-    
+
                 if (phieu['LOẠI PHIẾU'] === 'NHẬP KHO') {
                     acc[monthYear].nhapKho += tongTien;
                 } else if (phieu['LOẠI PHIẾU'] === 'XUẤT KHO') {
                     acc[monthYear].xuatKho += tongTien;
                 }
-    
+
                 return acc;
             }, {});
-    
+
             // Convert to array and sort by date
             const monthlyFinancials = Object.values(monthlyData)
                 .sort((a, b) => {
                     const [aMonth, aYear] = a.month.split('/').map(Number);
                     const [bMonth, bYear] = b.month.split('/').map(Number);
-    
+
                     if (aYear !== bYear) return aYear - bYear;
                     return aMonth - bMonth;
                 });
-    
+
             // Calculate production overview from reports
             const productionOverview = Array.isArray(reportData) ? reportData
                 .filter(report => report['TRẠNG THÁI'] === 'Đã duyệt')
                 .reduce((acc, report) => {
                     const congDoan = report['CÔNG ĐOẠN'];
-    
+
                     if (!acc[congDoan]) {
                         acc[congDoan] = {
                             name: congDoan,
                             volume: 0
                         };
                     }
-    
+
                     acc[congDoan].volume += parseFloat(report['KHỐI LƯỢNG'] || 0);
                     return acc;
                 }, {}) : {};
-    
+
             // Update dashboard data
             setDashboardData({
                 inventorySummary: {
@@ -277,7 +301,7 @@ const Dashboard = () => {
                 productionOverview: Object.values(productionOverview).sort((a, b) => b.volume - a.volume).slice(0, 5),
                 monthlyFinancials
             });
-            
+
             console.log("Dashboard data updated:", {
                 totalProducts,
                 totalValue: totalInventoryValue,
@@ -294,8 +318,9 @@ const Dashboard = () => {
         const end = new Date();
         const start = new Date();
         start.setDate(end.getDate() - days);
-
         setDateRange({ start, end });
+
+        // Không cần gọi API lại, useEffect sẽ xử lý với dữ liệu đã lưu
     };
 
     // Format currency

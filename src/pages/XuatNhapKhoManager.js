@@ -260,7 +260,7 @@ const XuatNhapKhoManager = () => {
               <h1 className="text-2xl font-bold text-gray-800">
                 Quản lý phiếu nhập xuất kho
               </h1>
-            </div>
+            </div> 
 
             <button
               onClick={handleCreateNewPhieu}

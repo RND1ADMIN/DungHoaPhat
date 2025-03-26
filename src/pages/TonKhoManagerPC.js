@@ -28,7 +28,11 @@ const TonKhoManagerPC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [showFilters, setShowFilters] = useState(false);
-
+    const [rawData, setRawData] = useState({
+        phieuList: [],
+        chiTietList: [],
+        hangHoaList: []
+    });
     // State for statistics
     const [statistics, setStatistics] = useState({
         tongSoMatHang: 0,
@@ -50,109 +54,145 @@ const TonKhoManagerPC = () => {
     }, []);
 
     // Apply filters when they change
-    useEffect(() => {
-        applyFilters();
-    }, [searchQuery, filters, danhSachTonKho]);
+    // Sửa đổi useEffect để gọi applyFilters khi filters thay đổi
+useEffect(() => {
+    applyFilters();
+}, [searchQuery, filters, danhSachTonKho, rawData]);
 
     // Calculate statistics when filtered data changes
     useEffect(() => {
         calculateStatistics();
     }, [filteredTonKho]);
 
-    // Fetch list of inventory
-    const fetchDanhSachTonKho = async () => {
-        setIsLoading(true);
-        try {
-            // Tạo lịch sử giao dịch xuất nhập kho
-            const phieuResponse = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {});
-            const chiTietResponse = await authUtils.apiRequest('XUATNHAPKHO_CHITIET', 'Find', {});
-            const hangHoaResponse = await authUtils.apiRequest('DMHH', 'Find', {});
+   
+// Sửa hàm fetchDanhSachTonKho để lưu dữ liệu gốc
+const fetchDanhSachTonKho = async () => {
+    setIsLoading(true);
+    try {
+        const phieuResponse = await authUtils.apiRequest('XUATNHAPKHO', 'Find', {});
+        const chiTietResponse = await authUtils.apiRequest('XUATNHAPKHO_CHITIET', 'Find', {});
+        const hangHoaResponse = await authUtils.apiRequest('DMHH', 'Find', {});
 
-            if (phieuResponse && chiTietResponse && hangHoaResponse) {
-                // Tạo dữ liệu tồn kho từ thông tin giao dịch
-                const tonKhoData = tinhToanTonKho(phieuResponse, chiTietResponse, hangHoaResponse);
-                setDanhSachTonKho(tonKhoData);
-            }
-        } catch (error) {
-            console.error('Error fetching inventory data:', error);
-            toast.error('Không thể tải dữ liệu tồn kho. Vui lòng thử lại.');
-        } finally {
-            setIsLoading(false);
+        if (phieuResponse && chiTietResponse && hangHoaResponse) {
+            // Lưu dữ liệu gốc
+            setRawData({
+                phieuList: phieuResponse,
+                chiTietList: chiTietResponse,
+                hangHoaList: hangHoaResponse
+            });
+            
+            // Tính toán tồn kho với dữ liệu mới
+            const tonKhoData = tinhToanTonKho(phieuResponse, chiTietResponse, hangHoaResponse);
+            setDanhSachTonKho(tonKhoData);
         }
-    };
+    } catch (error) {
+        console.error('Error fetching inventory data:', error);
+        toast.error('Không thể tải dữ liệu tồn kho. Vui lòng thử lại.');
+    } finally {
+        setIsLoading(false);
+    }
+};
 
     // Tính toán dữ liệu tồn kho
-    const tinhToanTonKho = (phieuList, chiTietList, hangHoaList) => {
-        // Tạo đối tượng lưu trữ thông tin tồn kho theo mã hàng
-        const tonKhoMap = {};
+  // Tính toán dữ liệu tồn kho
+const tinhToanTonKho = (phieuList, chiTietList, hangHoaList) => {
+    // Tạo đối tượng lưu trữ thông tin tồn kho theo mã hàng
+    const tonKhoMap = {};
 
-        // Khởi tạo dữ liệu tồn kho từ danh sách hàng hóa
-        hangHoaList.forEach(item => {
-            // Add random price for demonstration
-            const donGia = Math.floor(Math.random() * 900000) + 100000;
+    // Khởi tạo dữ liệu tồn kho từ danh sách hàng hóa
+    hangHoaList.forEach(item => {
+        tonKhoMap[item['MÃ HÀNG']] = {
+            'MÃ HÀNG': item['MÃ HÀNG'],
+            'TÊN HÀNG': item['TÊN HÀNG'],
+            'LOẠI': item['LOẠI'],
+            'ĐƠN VỊ TÍNH': item['ĐƠN VỊ TÍNH'],
+            'ĐƠN GIÁ': item['ĐƠN GIÁ'] || 0, // Đảm bảo có giá trị mặc định
+            'TỒN ĐẦU KỲ': 0,
+            'NHẬP TRONG KỲ': 0,
+            'XUẤT TRONG KỲ': 0,
+            'TỒN CUỐI KỲ': 0,
+            'GIÁ TRỊ TỒN KHO': 0 // Sẽ được tính toán sau
+        };
+    });
 
-            tonKhoMap[item['MÃ HÀNG']] = {
-                'MÃ HÀNG': item['MÃ HÀNG'],
-                'TÊN HÀNG': item['TÊN HÀNG'],
-                'LOẠI': item['LOẠI'],
-                'ĐƠN VỊ TÍNH': item['ĐƠN VỊ TÍNH'],
-                'ĐƠN GIÁ':  item['ĐƠN GIÁ'], // Add unit price
-                'TỒN ĐẦU KỲ': 0,
-                'NHẬP TRONG KỲ': 0,
-                'XUẤT TRONG KỲ': 0,
-                'TỒN CUỐI KỲ': 0,
-                'GIÁ TRỊ TỒN KHO': 0 // Will be calculated
-            };
-        });
+    // Lấy mốc thời gian từ filter hiện tại
+    const tuNgay = new Date(filters.tuNgay);
+    tuNgay.setHours(0, 0, 0, 0);
 
-        // Lấy mốc thời gian từ filter
-        const tuNgay = new Date(filters.tuNgay);
-        tuNgay.setHours(0, 0, 0, 0);
+    const denNgay = new Date(filters.denNgay);
+    denNgay.setHours(23, 59, 59, 999);
 
-        const denNgay = new Date(filters.denNgay);
-        denNgay.setHours(23, 59, 59, 999);
+    // Xử lý dữ liệu giao dịch
+    phieuList.forEach(phieu => {
+        const ngayGD = new Date(phieu['NGÀY GD']);
+        const maPhieu = phieu['MÃ PHIẾU'];
+        const loaiPhieu = phieu['LOẠI PHIẾU'];
 
-        // Xử lý dữ liệu giao dịch
-        phieuList.forEach(phieu => {
-            const ngayGD = new Date(phieu['NGÀY GD']);
-            const maPhieu = phieu['MÃ PHIẾU'];
-            const loaiPhieu = phieu['LOẠI PHIẾU'];
+        // Lọc chi tiết phiếu cho phiếu hiện tại
+        const chiTietPhieu = chiTietList.filter(item => item['MÃ PHIẾU'] === maPhieu);
 
-            const chiTietPhieu = chiTietList.filter(item => item['MÃ PHIẾU'] === maPhieu);
+        chiTietPhieu.forEach(chiTiet => {
+            const maHang = chiTiet['MÃ HÀNG'];
+            const soLuong = parseFloat(chiTiet['SỐ LƯỢNG']) || 0;
 
-            chiTietPhieu.forEach(chiTiet => {
-                const maHang = chiTiet['MÃ HÀNG'];
-                const soLuong = parseFloat(chiTiet['SỐ LƯỢNG']) || 0;
-
-                if (tonKhoMap[maHang]) {
-                    // Nếu giao dịch trước kỳ báo cáo, tính vào tồn đầu kỳ
-                    if (ngayGD < tuNgay) {
-                        if (loaiPhieu === 'NHẬP KHO') {
-                            tonKhoMap[maHang]['TỒN ĐẦU KỲ'] += soLuong;
-                        } else if (loaiPhieu === 'XUẤT KHO') {
-                            tonKhoMap[maHang]['TỒN ĐẦU KỲ'] -= soLuong;
-                        }
-                    }
-                    // Nếu giao dịch trong kỳ báo cáo, tính vào nhập/xuất trong kỳ
-                    else if (ngayGD >= tuNgay && ngayGD <= denNgay) {
-                        if (loaiPhieu === 'NHẬP KHO') {
-                            tonKhoMap[maHang]['NHẬP TRONG KỲ'] += soLuong;
-                        } else if (loaiPhieu === 'XUẤT KHO') {
-                            tonKhoMap[maHang]['XUẤT TRONG KỲ'] += soLuong;
-                        }
+            // Kiểm tra xem mã hàng có tồn tại trong danh sách hàng hóa không
+            if (tonKhoMap[maHang]) {
+                // Nếu giao dịch trước kỳ báo cáo, tính vào tồn đầu kỳ
+                if (ngayGD < tuNgay) {
+                    if (loaiPhieu === 'NHẬP KHO') {
+                        tonKhoMap[maHang]['TỒN ĐẦU KỲ'] += soLuong;
+                    } else if (loaiPhieu === 'XUẤT KHO') {
+                        tonKhoMap[maHang]['TỒN ĐẦU KỲ'] -= soLuong;
                     }
                 }
-            });
+                // Nếu giao dịch trong kỳ báo cáo, tính vào nhập/xuất trong kỳ
+                else if (ngayGD >= tuNgay && ngayGD <= denNgay) {
+                    if (loaiPhieu === 'NHẬP KHO') {
+                        tonKhoMap[maHang]['NHẬP TRONG KỲ'] += soLuong;
+                    } else if (loaiPhieu === 'XUẤT KHO') {
+                        tonKhoMap[maHang]['XUẤT TRONG KỲ'] += soLuong;
+                    }
+                }
+                // Nếu giao dịch sau kỳ báo cáo, không tính vào báo cáo hiện tại
+            }
         });
+    });
 
-        // Tính toán tồn cuối kỳ và giá trị tồn kho
-        Object.values(tonKhoMap).forEach(item => {
-            item['TỒN CUỐI KỲ'] = item['TỒN ĐẦU KỲ'] + item['NHẬP TRONG KỲ'] - item['XUẤT TRONG KỲ'];
-            item['GIÁ TRỊ TỒN KHO'] = item['TỒN CUỐI KỲ'] * item['ĐƠN GIÁ'];
-        });
+    // Tính toán tồn cuối kỳ và giá trị tồn kho
+    Object.values(tonKhoMap).forEach(item => {
+        // Đảm bảo giá trị số
+        item['TỒN ĐẦU KỲ'] = parseFloat(item['TỒN ĐẦU KỲ']) || 0;
+        item['NHẬP TRONG KỲ'] = parseFloat(item['NHẬP TRONG KỲ']) || 0;
+        item['XUẤT TRONG KỲ'] = parseFloat(item['XUẤT TRONG KỲ']) || 0;
+        item['ĐƠN GIÁ'] = parseFloat(item['ĐƠN GIÁ']) || 0;
 
-        return Object.values(tonKhoMap);
-    };
+        // Tính tồn cuối kỳ
+        item['TỒN CUỐI KỲ'] = item['TỒN ĐẦU KỲ'] + item['NHẬP TRONG KỲ'] - item['XUẤT TRONG KỲ'];
+        
+        // Đảm bảo tồn không âm (tùy vào logic nghiệp vụ)
+        // item['TỒN CUỐI KỲ'] = Math.max(0, item['TỒN CUỐI KỲ']);
+
+        // Tính giá trị tồn kho
+        item['GIÁ TRỊ TỒN KHO'] = item['TỒN CUỐI KỲ'] * item['ĐƠN GIÁ'];
+    });
+
+    // Chuyển đối tượng thành mảng để trả về
+    const result = Object.values(tonKhoMap);
+
+    // Lọc các mặt hàng có dữ liệu (tùy thuộc vào yêu cầu)
+    // Có thể bỏ qua bước này nếu muốn hiển thị tất cả mặt hàng
+    // const filteredResult = result.filter(item => 
+    //    item['TỒN ĐẦU KỲ'] !== 0 || 
+    //    item['NHẬP TRONG KỲ'] !== 0 || 
+    //    item['XUẤT TRONG KỲ'] !== 0 || 
+    //    item['TỒN CUỐI KỲ'] !== 0
+    // );
+
+    // Sắp xếp theo mã hàng
+    result.sort((a, b) => a['MÃ HÀNG'].localeCompare(b['MÃ HÀNG']));
+
+    return result;
+};
 
     // Calculate statistics for top of the report
     const calculateStatistics = () => {
@@ -199,42 +239,40 @@ const TonKhoManagerPC = () => {
     };
 
     // Apply all filters
-    const applyFilters = () => {
-        let result = [...danhSachTonKho];
+    // Sửa đổi hàm applyFilters
+const applyFilters = () => {
+    let result = [...danhSachTonKho];
 
-        // Apply search query
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase();
-            result = result.filter(item =>
-                item['MÃ HÀNG']?.toLowerCase().includes(query) ||
-                item['TÊN HÀNG']?.toLowerCase().includes(query)
-            );
+    // Nếu ngày thay đổi, tính toán lại từ dữ liệu gốc
+    if (filters.tuNgay !== new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] ||
+        filters.denNgay !== new Date().toISOString().split('T')[0]) {
+        // Tính toán lại dữ liệu tồn kho với ngày mới mà không gọi API
+        if (rawData.phieuList.length > 0) {
+            result = tinhToanTonKho(rawData.phieuList, rawData.chiTietList, rawData.hangHoaList);
         }
+    }
 
-        // Apply product type filter
-        if (filters.loaiHang !== 'ALL') {
-            result = result.filter(item => item['LOẠI'] === filters.loaiHang);
-        }
+    // Áp dụng bộ lọc tìm kiếm
+    if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        result = result.filter(item =>
+            item['MÃ HÀNG']?.toLowerCase().includes(query) ||
+            item['TÊN HÀNG']?.toLowerCase().includes(query)
+        );
+    }
 
-        // Re-calculate inventory based on date range
-        const tuNgay = new Date(filters.tuNgay);
-        const denNgay = new Date(filters.denNgay);
+    // Áp dụng bộ lọc loại hàng
+    if (filters.loaiHang !== 'ALL') {
+        result = result.filter(item => item['LOẠI'] === filters.loaiHang);
+    }
 
-        // Recalculate data only if date ranges changed, by calling API again
-        if (filters.tuNgay !== new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] ||
-            filters.denNgay !== new Date().toISOString().split('T')[0]) {
-            // In a real implementation, this would fetch new data or recalculate
-            // For now, we'll just use the existing calculation function
-            fetchDanhSachTonKho();
-        }
+    // Sắp xếp theo mã hàng
+    result.sort((a, b) => {
+        return a['MÃ HÀNG'].localeCompare(b['MÃ HÀNG']);
+    });
 
-        // Sort by product code
-        result.sort((a, b) => {
-            return a['MÃ HÀNG'].localeCompare(b['MÃ HÀNG']);
-        });
-
-        setFilteredTonKho(result);
-    };
+    setFilteredTonKho(result);
+};
 
     // Handle filter changes
     const handleFilterChange = (filterName, value) => {
