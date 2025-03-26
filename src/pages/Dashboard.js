@@ -307,7 +307,7 @@ const Dashboard = () => {
     const navigateToInventory = () => navigate('/tonkho');
     const navigateToTransactions = () => navigate('/xuatnhapkho');
     const navigateToProducts = () => navigate('/dmhh');
-    const navigateToReports = () => navigate('/reports');
+    const navigateToReports = () => navigate('/baocaoreport');
 
     return (
         <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
